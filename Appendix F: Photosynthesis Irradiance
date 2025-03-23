@@ -1,0 +1,1143 @@
+"""
+Script: calculate_pi_slopes.py
+
+
+Description:
+------------
+This script calculates the slopes of oxygen evolution from PI (photosynthesis-irradiance)
+measurements based on time step–resolved oxygen data. Each sheet in the Excel file represents
+one replicate, and each replicate may include multiple light steps, each beginning with time step = 0.
+
+The slopes are calculated via linear regression per segment and summarized in an output file.
+
+How to Use:
+-----------
+- Prepare an Excel file where each sheet contains two columns:
+    • 'time steps' – light step index (should reset to 0 for each light increment)
+    • 'oxygen/umol/L' – oxygen concentration measurement at each time step
+
+- Update the `input_file` variable to reflect the filename (e.g., 'PIP-25-11.xlsx').
+
+- The script structure remains unchanged across dates. Only the filename and output file should be modified.
+
+Output:
+-------
+- Prints slope values per replicate and segment.
+- Saves a summary table as an Excel file (e.g., 'Slopes 25-10-24.xlsx').
+"""
+
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import LinearRegression
+
+# ------------------------------------------------------------------------------
+# Step 1 – Configuration
+# ------------------------------------------------------------------------------
+
+# Input file containing the PI measurements
+input_file = 'PIP-25-10.xlsx'  # Change this to 'PIP-25-11.xlsx' for different measurement days
+
+# Output file to save the calculated slopes
+output_file = 'Slopes 25-10-24.xlsx'  # Adjust date accordingly
+
+# Sheet names representing each tank replicate
+sheets_to_process = [
+    'H1-1', 'H1-2', 'H1-3', 'H1-4',
+    'H2-1', 'H2-2', 'H2-3', 'H2-4',
+    'H3-B-1', 'H3-B-2', 'H3-B-3', 'H3-B-4',
+    'H3-1', 'H3-2', 'H3-3', 'H3-4',
+    'H4-B-1', 'H4-B-2', 'H4-B-3', 'H4-B-4',
+    'H4-1', 'H4-2', 'H4-3', 'H4-4'
+]
+
+# ------------------------------------------------------------------------------
+# Step 2 – Slope Calculation per Segment in Each Sheet
+# ------------------------------------------------------------------------------
+
+# Dictionary to store slope values
+all_slopes = {}
+
+for sheet in sheets_to_process:
+    print(f"\nProcessing sheet: {sheet}")
+    
+    # Load data and remove any leading/trailing spaces in column names
+    df = pd.read_excel(input_file, sheet_name=sheet)
+    df.rename(columns=lambda x: x.strip(), inplace=True)
+
+    # Define expected column names
+    x_col = 'time steps'
+    y_col = 'oxygen/umol/L'
+
+    # Identify indices where new segments start (time step = 0)
+    start_indices = df.index[df[x_col] == 0].tolist()
+    dataframes = []
+
+    for i in range(len(start_indices)):
+        start_idx = start_indices[i]
+        end_idx = start_indices[i + 1] if i < len(start_indices) - 1 else None
+        segment = df.iloc[start_idx:end_idx]
+        dataframes.append(segment)
+
+    # Compute slope via linear regression for each segment
+    slopes = []
+    for idx, segment in enumerate(dataframes, start=1):
+        X = segment[x_col].values.reshape(-1, 1)
+        Y = segment[y_col].values
+
+        model = LinearRegression().fit(X, Y)
+        slope = model.coef_[0]
+        slopes.append(slope)
+
+        print(f"  Segment {idx}: Slope = {slope:.4f}")
+
+    all_slopes[sheet] = slopes
+
+# ------------------------------------------------------------------------------
+# Step 3 – Summary Output
+# ------------------------------------------------------------------------------
+
+print("\nSummary of computed slopes per sheet:")
+for sheet, slopes in all_slopes.items():
+    print(f"\nSheet {sheet}:")
+    for i, s in enumerate(slopes, start=1):
+        print(f"  Segment {i}: Slope = {s:.4f}")
+
+# ------------------------------------------------------------------------------
+# Step 4 – Export Slopes to Excel
+# ------------------------------------------------------------------------------
+
+# Flatten results into a list of dictionaries
+results_list = []
+for sheet, slopes in all_slopes.items():
+    for idx, slope in enumerate(slopes, start=1):
+        results_list.append({
+            'Sheet': sheet,
+            'Segment': idx,
+            'Slope': slope
+        })
+
+# Create DataFrame and export
+results_df = pd.DataFrame(results_list)
+results_df.to_excel(output_file, index=False)
+print(f"\nThe slopes have been saved in the file '{output_file}'.")
+
+"""
+Script: calculate_lightstep_duration.py
+
+Description:
+------------
+This script processes time-series oxygen evolution data from PI (photosynthesis-irradiance) measurements.
+It calculates the duration (in minutes) of each light step ("Section") in each replicate (Excel sheet),
+based on the time information recorded in the dataset.
+
+Each light step is assumed to start when the column 'time steps' equals 0.
+
+How to Use:
+-----------
+1. Ensure that your Excel file contains multiple sheets representing individual replicates.
+2. Each sheet should include at least the following columns:
+    - 'time steps'         (resets to 0 at the beginning of each light step)
+    - 'time' (or both 'date' and 'time') for timestamp generation
+3. Update the `input_file` variable to the filename for the specific measurement day (e.g., 'PIP-25-11.xlsx').
+4. The script will automatically calculate the duration of each light step and export the results.
+
+Output:
+-------
+An Excel file summarizing:
+- Start time
+- End time
+- Duration (in minutes)
+...for each light step (Section) and replicate (Sheet).
+"""
+
+import pandas as pd
+
+# ------------------------------------------------------------------------------
+# Step 1 – File configuration
+# ------------------------------------------------------------------------------
+
+# Input file containing oxygen measurements with time tracking
+input_file = 'PIP-25-11.xlsx'   # Change this for another date, e.g., 'PIP-26-11.xlsx'
+output_file = 'time-25-11-24.xlsx'  # Output file name with matching date
+
+# List of Excel sheets (each representing a replicate)
+sheets = [
+    'H1-1', 'H1-2', 'H1-3', 'H1-4',
+    'H2-1', 'H2-2', 'H2-3', 'H2-4',
+    'H3-B-1', 'H3-B-2', 'H3-B-3', 'H3-B-4',
+    'H3-1', 'H3-2', 'H3-3', 'H3-4',
+    'H4-B-1', 'H4-B-2', 'H4-B-3', 'H4-B-4',
+    'H4-1', 'H4-2', 'H4-3', 'H4-4'
+]
+
+# ------------------------------------------------------------------------------
+# Step 2 – Process each sheet and calculate section durations
+# ------------------------------------------------------------------------------
+
+results = []
+
+for sheet in sheets:
+    print(f"Processing sheet '{sheet}'")
+    df = pd.read_excel(input_file, sheet_name=sheet)
+    
+    # Clean column names
+    df.columns = df.columns.str.strip()
+    print("Columns in sheet:", df.columns.tolist())
+
+    # Generate a full datetime column
+    if 'date' in df.columns and 'time' in df.columns:
+        df['datetime'] = pd.to_datetime(
+            df['date'].astype(str) + ' ' + df['time'].astype(str),
+            errors='coerce'
+        )
+    elif 'time' in df.columns:
+        df['datetime'] = pd.to_datetime(df['time'], format='%H:%M:%S', errors='coerce')
+    else:
+        print("Skipping: 'date' or 'time' column missing.")
+        continue
+
+    # Confirm timestamp parsing
+    print("First datetime values:", df['datetime'].head(3).tolist())
+
+    # Confirm presence of time steps
+    if 'time steps' not in df.columns:
+        print("Skipping: 'time steps' column not found.")
+        continue
+
+    # Identify light step segments (Sections) by incrementing on every 'time steps == 0'
+    df['Section'] = (df['time steps'] == 0).cumsum()
+
+    # Group by section and calculate duration
+    for section, group in df.groupby('Section'):
+        if len(group) < 2:
+            duration_minutes = 0
+            start_time = group['datetime'].iloc[0] if not group['datetime'].empty else None
+            end_time = start_time
+        else:
+            start_time = group['datetime'].iloc[0]
+            end_time = group['datetime'].iloc[-1]
+            if pd.isnull(start_time) or pd.isnull(end_time):
+                duration_minutes = None
+            else:
+                delta = end_time - start_time
+                duration_minutes = delta.total_seconds() / 60
+
+        results.append({
+            'Sheet': sheet,
+            'Section': section,
+            'Start Time': start_time,
+            'End Time': end_time,
+            'Duration (Minutes)': duration_minutes
+        })
+
+    print(f"Results for sheet '{sheet}' processed.\n" + "-" * 40)
+
+# ------------------------------------------------------------------------------
+# Step 3 – Save final results to Excel
+# ------------------------------------------------------------------------------
+
+results_df = pd.DataFrame(results)
+results_df.to_excel(output_file, index=False)
+
+
+"""
+Script: fit_pi_curves.py
+
+
+Description:
+------------
+This script fits photosynthesis-irradiance (PI) curves using the Jassby & Platt (1976) model.
+It processes PI measurement data stored in an Excel file, fits a non-linear function to each 
+treatment condition, and extracts key parameters such as:
+- Pmax: Maximum photosynthetic rate
+- Alpha: Initial slope of the curve (light-use efficiency)
+- R: Respiration rate (intercept)
+- Ek: Light saturation point (Pmax / alpha)
+
+The results are exported to an Excel file, with one sheet per original dataset.
+
+The script assumes each sheet in the Excel file contains light intensity in the first column, 
+followed by one column per treatment (replicate or condition).
+"""
+
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.optimize import curve_fit
+
+# ==============================================================================
+# 1. PI Curve Function (Jassby & Platt, 1976)
+# ==============================================================================
+def pi_curve(I, Pmax, alpha, R):
+    """
+    PI curve function based on Jassby & Platt (1976):
+    P(I) = Pmax * tanh(alpha * I / Pmax) - R
+
+    Parameters:
+        I     - Light intensity
+        Pmax  - Maximum photosynthetic rate
+        alpha - Initial slope (light-use efficiency)
+        R     - Respiration (y-intercept)
+
+    Returns:
+        Estimated photosynthesis values
+    """
+    return Pmax * np.tanh(alpha * I / Pmax) - R
+
+# ==============================================================================
+# 2. Load and Preprocess Excel Data
+# ==============================================================================
+
+# Define working directory and Excel input file
+os.chdir("/Users/sarah/Desktop/Masterarbeit/VS_Coode")
+excel_file = "PI_Curve_Dataset_Complete.xlsx"
+
+# List of sheet names
+sheet_names = pd.ExcelFile(excel_file).sheet_names
+
+def process_data(sheet_name, excel_file):
+    """
+    Reads a sheet from the Excel file and reshapes it into long format.
+
+    Returns:
+        Long-format DataFrame with columns: Light_Intensity, Treatment, Photosynthesis
+    """
+    df = pd.read_excel(excel_file, sheet_name=sheet_name)
+    df = df.rename(columns={"Light Intensity (quanta mol)": "Light_Intensity"})
+    long_df = df.melt(id_vars=["Light_Intensity"], var_name="Treatment", value_name="Photosynthesis")
+    return long_df.dropna()
+
+# Load and transform data for all sheets
+data_dict = {sheet: process_data(sheet, excel_file) for sheet in sheet_names}
+
+# ==============================================================================
+# 3. Fit the PI Curve for Each Treatment
+# ==============================================================================
+def fit_pi_curve(data):
+    """
+    Fits the PI curve to each treatment in the dataset.
+
+    Returns:
+        Dictionary of fitted parameters per treatment.
+    """
+    fit_results = {}
+
+    for treatment, group in data.groupby("Treatment"):
+        try:
+            # Estimate initial parameters for better convergence
+            R_start = -group.loc[group["Light_Intensity"] == 0, "Photosynthesis"].values[0] \
+                      if (group["Light_Intensity"] == 0).any() else -group["Photosynthesis"].min()
+            Pmax_start = max(group["Photosynthesis"].max() + abs(R_start), 0.001)
+            alpha_start = max(0.0002, Pmax_start / max(group["Light_Intensity"].max(), 1))
+
+            # Fit the model
+            popt, _ = curve_fit(
+                pi_curve,
+                group["Light_Intensity"],
+                group["Photosynthesis"],
+                p0=[Pmax_start, alpha_start, R_start],
+                maxfev=5000
+            )
+
+            # Extract parameters and compute light saturation point
+            Pmax, alpha, R = popt
+            Ek = Pmax / alpha if alpha > 0 else np.nan
+            Photoinhibition = "Yes" if alpha < 0 else "No"
+
+            fit_results[treatment] = {
+                "Pmax": Pmax,
+                "Alpha": alpha,
+                "R": R,
+                "Ek": Ek,
+                "Photoinhibition": Photoinhibition
+            }
+
+        except Exception as e:
+            print(f" Curve fitting failed for treatment '{treatment}' in sheet '{sheet_name}': {e}")
+            fit_results[treatment] = None
+
+    return fit_results
+
+# Apply fitting to all sheets
+fit_results_dict = {sheet: fit_pi_curve(data) for sheet, data in data_dict.items()}
+
+# ==============================================================================
+# 4. Export Fitting Results to Excel
+# ==============================================================================
+output_file = "PI_Curve_Fit_Results.xlsx"
+
+with pd.ExcelWriter(output_file, engine="xlsxwriter") as writer:
+    for sheet, results in fit_results_dict.items():
+        if results:
+            df = pd.DataFrame(results).T  # Transpose to have treatments as rows
+            df.to_excel(writer, sheet_name=sheet)
+
+print(f"\n All PI curve fit results have been saved to '{output_file}'.")
+
+"""
+Script: clean_pi_data.py
+
+Description:
+------------
+This script loads PI curve data from an Excel file and performs several preprocessing steps:
+- Loads the appropriate worksheet
+- Renames columns for consistency
+- Removes outliers using the IQR method
+- Applies a leakage correction to dark (zero-light) measurements
+- Drops rows with missing values in essential columns
+
+The cleaned data is stored in a dictionary and optionally displayed.
+
+Requirements:
+-------------
+- pandas
+- numpy
+
+To install dependencies:
+pip install pandas numpy
+"""
+
+import pandas as pd
+import numpy as np
+
+# -----------------------------------------------------------------------------
+# 1. Load the Excel file
+# -----------------------------------------------------------------------------
+file_path = "PI_Stats.xlsx"
+
+# Load workbook and list available sheets
+xl = pd.ExcelFile(file_path)
+print("Available sheet names:", xl.sheet_names)
+
+# Use the "PI" sheet if it exists; otherwise use the first available sheet
+if "PI" in xl.sheet_names:
+    sheet_to_use = "PI"
+else:
+    print("Worksheet 'PI' not found. Using the first sheet:", xl.sheet_names[0])
+    sheet_to_use = xl.sheet_names[0]
+
+# Load the selected worksheet
+df = xl.parse(sheet_name=sheet_to_use, na_values=["NA"])
+
+# -----------------------------------------------------------------------------
+# 2. Rename columns if needed
+# -----------------------------------------------------------------------------
+print("Original columns:", df.columns.tolist())
+
+if "Net Photosynthesis" in df.columns:
+    df = df.rename(columns={"Net Photosynthesis": "Response"})
+
+if "Mean Light Intensity" in df.columns:
+    df = df.rename(columns={"Mean Light Intensity": "Light_Intensity"})
+
+# -----------------------------------------------------------------------------
+# 3. Define a function to remove outliers (IQR method)
+# -----------------------------------------------------------------------------
+def remove_outliers_iqr(series):
+    """Removes outliers from a numerical pandas Series using the IQR method."""
+    series = pd.to_numeric(series, errors='coerce')  # ensure numeric
+    q1, q3 = series.quantile(0.25), series.quantile(0.75)
+    iqr = q3 - q1
+    low_threshold = q1 - 1.5 * iqr
+    high_threshold = q3 + 1.5 * iqr
+    return series.mask((series < low_threshold) | (series > high_threshold))
+
+# -----------------------------------------------------------------------------
+# 4. Apply outlier removal to numeric columns
+# -----------------------------------------------------------------------------
+numeric_cols = ["Light_Intensity", "Response", "Temperature"]
+
+for col in numeric_cols:
+    if col in df.columns:
+        df[col] = remove_outliers_iqr(df[col])
+
+# -----------------------------------------------------------------------------
+# 5. Optional: Correct for positive dark measurements (leakage correction)
+# -----------------------------------------------------------------------------
+# Assumption: The first column contains light intensity or time, and zero indicates dark.
+if 0 in df[df.columns[0]].values:
+    zero_idx = df[df[df.columns[0]] == 0].index
+    for col in numeric_cols:
+        if not pd.isna(df.at[zero_idx[0], col]) and df.at[zero_idx[0], col] > 0:
+            df.at[zero_idx[0], col] = np.nan  # Replace with NaN
+
+# -----------------------------------------------------------------------------
+# 6. Drop rows with missing values in essential columns
+# -----------------------------------------------------------------------------
+required_cols = ["Day", "Treatment", "Light_Intensity", "Response"]
+missing = [col for col in required_cols if col not in df.columns]
+
+if missing:
+    print(" Missing required columns:", missing)
+else:
+    df = df.dropna(subset=required_cols)
+
+# -----------------------------------------------------------------------------
+# 7. Final cleaned dataset preview
+# -----------------------------------------------------------------------------
+print("\n Cleaned data preview:")
+print(df.head())
+
+# -----------------------------------------------------------------------------
+# 8. Optional: Store cleaned data in a dictionary
+# -----------------------------------------------------------------------------
+clean_data = {"PI": df}
+
+
+Description:
+-------------
+This script fits two types of photosynthesis-irradiance (PI) curves:
+1. A hyperbolic tangent model (Jassby & Platt, 1976)
+2. A model with photoinhibition
+
+For each replicate within the dataset (grouped by Day and Treatment), the script estimates key parameters:
+- Maximum photosynthetic rate (Pmax)
+- Initial slope (Alpha)
+- Dark respiration rate (R)
+- Light saturation point (Ik)
+- Optional: Photoinhibition coefficient (Beta)
+
+The best model is chosen based on the fit quality (sum of squared residuals), and results are saved to an Excel file.
+
+Requirements:
+-------------
+- numpy
+- pandas
+- scipy
+
+To install dependencies:
+pip install numpy pandas scipy
+"""
+
+import numpy as np
+from scipy.optimize import curve_fit
+import pandas as pd
+
+# -------------------------------------------------------------------
+# 1. Define PI curve models
+# -------------------------------------------------------------------
+
+def PI_hyperbolic(I, Pmax, alpha, R):
+    """
+    Hyperbolic PI curve (Jassby & Platt, 1976).
+    
+    Parameters:
+        I     : Irradiance
+        Pmax  : Maximum photosynthetic rate
+        alpha : Initial slope (light-use efficiency)
+        R     : Respiration rate
+
+    Returns:
+        Modeled photosynthesis values
+    """
+    return Pmax * np.tanh(alpha * I / Pmax) + R
+
+
+def PI_photoinhib(I, Ps, alpha, beta, R):
+    """
+    PI curve with photoinhibition.
+
+    Parameters:
+        I     : Irradiance
+        Ps    : Saturation parameter
+        alpha : Initial slope
+        beta  : Photoinhibition coefficient
+        R     : Respiration rate
+
+    Returns:
+        Modeled photosynthesis values
+    """
+    return Ps * (1 - np.exp(-alpha * I / Ps)) * np.exp(-beta * I / Ps) + R
+
+
+# -------------------------------------------------------------------
+# 2. Load cleaned dataset (assumed to be loaded into clean_data["PI"])
+# -------------------------------------------------------------------
+df = clean_data["PI"]
+
+# Ensure correct formatting
+df["Light_Intensity"] = pd.to_numeric(df["Light_Intensity"].astype(str).str.replace(',', '.'), errors='coerce')
+df["Response"] = pd.to_numeric(df["Response"].astype(str).str.replace(',', '.'), errors='coerce')
+
+# Drop rows with missing values
+required_cols = ["Day", "Treatment", "Light_Intensity", "Response"]
+df = df.dropna(subset=required_cols)
+
+# -------------------------------------------------------------------
+# 3. Fit models for each group (Day x Treatment)
+# -------------------------------------------------------------------
+groups = df.groupby(["Day", "Treatment"])
+param_results = []
+
+for (day, treatment), group in groups:
+    I_vals = group["Light_Intensity"].values
+    P_vals = group["Response"].values
+    temp = group["Temperature"].iloc[0] if "Temperature" in group.columns else np.nan
+
+    if len(P_vals) < 3:
+        continue
+
+    # Initial estimates
+    R0 = min(P_vals[0], 0)
+    Pmax0 = np.nanmax(P_vals) if np.nanmax(P_vals) > 0 else 0.01
+    if len(P_vals) > 1 and I_vals[1] != I_vals[0]:
+        alpha0 = (P_vals[1] - P_vals[0]) / (I_vals[1] - I_vals[0])
+    else:
+        alpha0 = 0.01
+    alpha0 = abs(alpha0) if alpha0 != 0 else 0.01
+
+    # --- Fit hyperbolic model (no photoinhibition) ---
+    try:
+        popt, _ = curve_fit(
+            PI_hyperbolic, I_vals, P_vals,
+            p0=[Pmax0, alpha0, R0],
+            bounds=([0, 0, -np.inf], [np.inf, np.inf, 0])
+        )
+        Pmax_fit, alpha_fit, R_fit = popt
+        residuals = P_vals - PI_hyperbolic(I_vals, *popt)
+        ssr = np.sum(residuals ** 2)
+    except RuntimeError:
+        popt = [np.nan, np.nan, np.nan]
+        ssr = np.inf
+
+    # --- Optionally fit photoinhibition model ---
+    beta_fit = 0.0
+    try:
+        popt_pi, _ = curve_fit(
+            PI_photoinhib, I_vals, P_vals,
+            p0=[Pmax_fit, alpha_fit, 0.001, R_fit],
+            bounds=([0, 0, 0, -np.inf], [np.inf, np.inf, 1, 0])
+        )
+        Ps_fit, alpha_pi, beta_pi, R_pi = popt_pi
+        residuals_pi = P_vals - PI_photoinhib(I_vals, *popt_pi)
+        ssr_pi = np.sum(residuals_pi ** 2)
+
+        # Accept photoinhibition model if SSR improves by more than 20%
+        if ssr_pi * 0.8 < ssr:
+            Pmax_fit, alpha_fit, R_fit = Ps_fit, alpha_pi, R_pi
+            beta_fit = beta_pi
+    except RuntimeError:
+        pass
+
+    # Calculate Ik (saturation irradiance)
+    Ik_fit = Pmax_fit / alpha_fit if alpha_fit != 0 else np.nan
+
+    # Store results
+    param_results.append({
+        "Day": day,
+        "Treatment": treatment,
+        "Temperature": temp,
+        "Pmax": Pmax_fit,
+        "Alpha": alpha_fit,
+        "R": R_fit,
+        "Ik": Ik_fit,
+        "Beta": beta_fit
+    })
+
+# -------------------------------------------------------------------
+# 4. Save results
+# -------------------------------------------------------------------
+df_params = pd.DataFrame(param_results)
+df_params = df_params.sort_values(by=["Day", "Treatment"])
+
+output_file = "PI_Parameters.xlsx"
+df_params.to_excel(output_file, index=False)
+
+print(f" Fitting complete. Parameter estimates saved to '{output_file}'.")
+print("Preview of results:")
+print(df_params.head())
+
+"""
+Script: PI_LMM_Analysis.py
+Description:
+------------
+This script performs a linear mixed-effects model (LMM) analysis on photosynthesis 
+parameter data (e.g., Pmax, Alpha, R, Ik, Beta) derived from PI curve fitting.
+The model evaluates how each parameter responds to the experimental factors 
+"Treatment group" and "Day", while accounting for random effects from individual replicates.
+
+The response variable (e.g., Pmax) can be freely replaced with any available 
+parameter (Alpha, R, Ik, Beta) for flexible analysis.
+
+Requirements:
+-------------
+- pandas
+- statsmodels
+- seaborn
+- matplotlib
+"""
+
+import pandas as pd
+import statsmodels.formula.api as smf
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# ------------------------------------------------------------
+# 1. Load Excel file containing parameter estimates
+# ------------------------------------------------------------
+df = pd.read_excel("PI_Parameters_LMM.xlsx")
+
+# Remove rows with missing values in key columns
+df = df.dropna(subset=['Pmax', 'Alpha', 'R', 'Ik', 'Beta'])
+
+# ------------------------------------------------------------
+# 2. Format date and categorical structure
+# ------------------------------------------------------------
+
+# Convert 'Day' to datetime and define as ordered category
+df['Day'] = pd.to_datetime(df['Day'], dayfirst=True)
+
+# Define test dates explicitly and ensure correct order
+all_days = ['2024-10-25', '2024-11-25', '2024-12-10']
+df['Day_cat'] = pd.Categorical(df['Day'].dt.strftime('%Y-%m-%d'),
+                               categories=all_days,
+                               ordered=True)
+
+# Extract treatment group (e.g., from H1-1 to H1)
+df['Treatment_group'] = df['Treatment'].str.replace(r'-\d+$', '', regex=True)
+df['Treatment_group'] = pd.Categorical(df['Treatment_group'],
+                                       categories=['H1', 'H2', 'H3', 'H3-B', 'H4', 'H4-B'],
+                                       ordered=False)
+
+# Replicate ID (e.g., H1-1, H2-3) used as random effect
+df['Replicate'] = df['Treatment'].astype('category')
+
+# ------------------------------------------------------------
+# 3. Linear Mixed Model (LMM)
+# ------------------------------------------------------------
+# You can replace "Pmax" with any parameter column: Alpha, R, Ik, Beta
+response_variable = "Pmax"
+
+# Build the model with interaction between treatment and time
+model = smf.mixedlm(f"{response_variable} ~ Treatment_group * Day_cat",
+                    data=df, groups=df["Replicate"])
+result = model.fit()
+
+# ------------------------------------------------------------
+# 4. Output summary of results
+# ------------------------------------------------------------
+print(f"\nLMM Results for {response_variable}:\n")
+print(result.summary())
+
+"""
+Script: Correlation_Heatmap_Photosynthesis_Params.py
+Description:
+------------
+This script computes and visualizes the Pearson correlation matrix
+for key photosynthesis parameters derived from PI curve fitting:
+- Pmax (maximum photosynthesis rate)
+- Alpha (light utilization efficiency)
+- R (dark respiration rate)
+- Ik (light saturation point)
+- Beta (photoinhibition parameter)
+
+The heatmap provides an overview of how these parameters interrelate.
+"""
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+# ---------------------------------------------------------------
+# 1. Load your DataFrame (assumes it includes the relevant columns)
+# ---------------------------------------------------------------
+# Example: df = pd.read_excel("PI_Parameters_LMM.xlsx")
+# Ensure the dataframe includes these columns:
+expected_cols = ['Pmax', 'Alpha', 'R', 'Ik', 'Beta']
+if not all(col in df.columns for col in expected_cols):
+    raise ValueError(f"One or more expected columns are missing: {expected_cols}")
+
+# ---------------------------------------------------------------
+# 2. Compute the Pearson correlation matrix
+# ---------------------------------------------------------------
+correlation_matrix = df[expected_cols].corr(method="pearson")
+
+# Print matrix to console
+print("Correlation Matrix:")
+print(correlation_matrix)
+
+# ---------------------------------------------------------------
+# 3. Plot the correlation matrix as a heatmap
+# ---------------------------------------------------------------
+fig, ax = plt.subplots(figsize=(8, 6))
+cax = ax.matshow(correlation_matrix, cmap='coolwarm')
+fig.colorbar(cax)
+
+# Set tick positions and labels
+ticks = np.arange(len(expected_cols))
+ax.set_xticks(ticks)
+ax.set_yticks(ticks)
+ax.set_xticklabels(expected_cols, rotation=45)
+ax.set_yticklabels(expected_cols)
+
+# Title and layout
+plt.title("Correlation Matrix of Photosynthesis Parameters", pad=20)
+plt.tight_layout()
+plt.show()
+
+
+################################ P I CURVES ######################
+
+"""
+Script: PI_Curve_Fitting_CleanedData.py
+
+
+Description:
+------------
+This script processes PI (Photosynthesis-Irradiance) curve datasets,
+cleans the data using an IQR-based outlier removal approach,
+and fits two types of models for each light curve:
+
+1. Hyperbolic Tangent Model (Jassby & Platt, 1976)
+2. Photoinhibition Model (Platt et al.)
+
+For each condition (treatment/replicate), the best-fitting model is selected
+based on residual improvement. The output parameters (Pmax, Alpha, R, Ik, Beta)
+are saved in a multi-sheet Excel file.
+
+Key Outputs:
+- Saturation irradiance (Ik)
+- Maximum photosynthesis rate (Pmax)
+- Initial slope of the curve (Alpha)
+- Respiration rate (R)
+- Optional photoinhibition coefficient (Beta)
+"""
+
+import pandas as pd
+import numpy as np
+from scipy.optimize import curve_fit
+
+# ---------------------------------------------------------
+# 1) Load and Clean Data
+# ---------------------------------------------------------
+
+# Load Excel file
+file_path = "PI_Curve_Dataset_Complete.xlsx"
+xl = pd.ExcelFile(file_path)
+
+def remove_outliers_iqr(series):
+    """
+    Removes outliers using the IQR method.
+    Values outside [Q1 - 1.5*IQR, Q3 + 1.5*IQR] are replaced with NaN.
+    """
+    q1, q3 = series.quantile(0.25), series.quantile(0.75)
+    iqr = q3 - q1
+    return series.mask((series < q1 - 1.5 * iqr) | (series > q3 + 1.5 * iqr))
+
+# Store cleaned data
+clean_data = {}
+
+# Iterate through all sheets
+for sheet in xl.sheet_names:
+    df = xl.parse(sheet, na_values=['NA'])
+
+    # Apply IQR outlier filtering to all measurement columns (excluding first)
+    for col in df.columns[1:]:
+        df[col] = remove_outliers_iqr(df[col])
+
+    # Optional: Remove leakage from dark measurements (I = 0)
+    if 0 in df[df.columns[0]].values:
+        zero_idx = df[df[df.columns[0]] == 0].index
+        for col in df.columns[1:]:
+            if not pd.isna(df.at[zero_idx[0], col]) and df.at[zero_idx[0], col] > 0:
+                df.at[zero_idx[0], col] = np.nan
+
+    clean_data[sheet] = df
+
+# ---------------------------------------------------------
+# 2) Define PI Curve Models
+# ---------------------------------------------------------
+
+def PI_hyperbolic(I, Pmax, alpha, R):
+    """ Jassby & Platt (1976) model: no photoinhibition. """
+    return Pmax * np.tanh(alpha * I / Pmax) + R
+
+def PI_photoinhib(I, Ps, alpha, beta, R):
+    """ Platt model with photoinhibition. """
+    return Ps * (1 - np.exp(-alpha * I / Ps)) * np.exp(-beta * I / Ps) + R
+
+# ---------------------------------------------------------
+# 3) Fit Models per Sheet and Condition
+# ---------------------------------------------------------
+
+results = {}
+
+for sheet, df in clean_data.items():
+    param_list = []
+    I_vals = df[df.columns[0]].values  # Light intensity
+
+    for cond in df.columns[1:]:
+        mask = ~df[cond].isna()
+        I = I_vals[mask]
+        P = df[cond].values[mask]
+        if len(P) < 3:
+            continue
+
+        # Initial guesses
+        R0 = P[0] if I[0] == 0 else 0.0
+        Pmax0 = max(np.nanmax(P), 0.01)
+        if len(P) > 1 and I[1] != I[0]:
+            alpha0 = (P[1] - P[0]) / (I[1] - I[0])
+        else:
+            alpha0 = 0.01
+        alpha0 = abs(alpha0) if alpha0 != 0 else 0.01
+
+        # Fit hyperbolic model
+        try:
+            popt, _ = curve_fit(
+                PI_hyperbolic, I, P,
+                p0=[Pmax0, alpha0, R0],
+                bounds=([0, 0, -np.inf], [np.inf, np.inf, 0]),
+                maxfev=5000
+            )
+            Pmax_fit, alpha_fit, R_fit = popt
+            residuals = P - PI_hyperbolic(I, *popt)
+            ssr = np.sum(residuals**2)
+        except RuntimeError:
+            popt = [np.nan, np.nan, np.nan]
+            ssr = np.inf
+
+        # Attempt photoinhibition model if residuals are large
+        beta_fit = 0.0
+        try:
+            popt_pi, _ = curve_fit(
+                PI_photoinhib, I, P,
+                p0=[Pmax_fit, alpha_fit, 0.001, R_fit],
+                bounds=([0, 0, 0, -np.inf], [np.inf, np.inf, 1, 0]),
+                maxfev=5000
+            )
+            Ps_fit, alpha_pi, beta_pi, R_pi = popt_pi
+            residuals_pi = P - PI_photoinhib(I, *popt_pi)
+            ssr_pi = np.sum(residuals_pi**2)
+
+            # Use photoinhibition model if it improves SSR by >20%
+            if ssr_pi * 0.8 < ssr:
+                Pmax_fit, alpha_fit, R_fit = Ps_fit, alpha_pi, R_pi
+                beta_fit = beta_pi
+        except RuntimeError:
+            pass
+
+        Ik_fit = Pmax_fit / alpha_fit if alpha_fit != 0 else np.nan
+
+        param_list.append({
+            "Condition": cond,
+            "Pmax": Pmax_fit,
+            "Alpha": alpha_fit,
+            "R": R_fit,
+            "Ik": Ik_fit,
+            "Beta": beta_fit
+        })
+
+    results[sheet] = pd.DataFrame(param_list)
+
+# ---------------------------------------------------------
+# 4) Export Results to Excel
+# ---------------------------------------------------------
+
+output_file = "PI_Parameters_Mean.xlsx"
+with pd.ExcelWriter(output_file) as writer:
+    for sheet, df_out in results.items():
+        df_out.to_excel(writer, sheet_name=sheet, index=False)
+
+print(f"Fitting complete. Parameter estimates saved to '{output_file}'.")
+
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Set the font to Times New Roman
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.serif'] = ['Times New Roman']
+
+def PI_photoinhib(I, Ps, alpha, beta, R):
+    """
+    Platt et al. model with photoinhibition.
+    
+    Parameters:
+        I : array-like, light intensities
+        Ps: float, saturation parameter (similar to Pmax)
+        alpha: float, initial slope
+        beta: float, photoinhibition parameter
+        R: float, dark respiration
+        
+    Returns:
+        Modeled photosynthetic rates.
+    """
+    return Ps * (1 - np.exp(-alpha * I / Ps)) * np.exp(-beta * I / Ps) + R
+
+def PI_hyperbolic(I, Pmax, alpha, R):
+    """
+    Jassby–Platt hyperbolic model (without photoinhibition).
+    
+    Parameters:
+        I : array-like, light intensities
+        Pmax: float, maximum photosynthetic rate
+        alpha: float, initial slope (light utilization efficiency)
+        R: float, dark respiration
+        
+    Returns:
+        Modeled photosynthetic rates.
+    """
+    return Pmax * np.tanh(alpha * I / Pmax) + R
+
+# Color palette (Okabe–Ito, colorblind-friendly) and marker styles
+colors = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#000000', '#56B4E9']
+markers = ['o', 's', 'D', '^', 'v', 'P']
+
+# Loop over all sheets in 'results', a dictionary where each key is a sheet name
+# and each value is a DataFrame containing fit parameters for various conditions.
+for i, (sheet, df_fit) in enumerate(results.items()):
+    plt.figure(figsize=(7, 5))
+    
+    # Format the date string for the plot title (e.g., "25-10" becomes "25.10.24")
+    date_str = sheet.replace('-', '.') + ".24"
+    plt.title(f"Photosynthesis–Irradiance Curve – {date_str}", fontsize=12)
+    
+    # Angepasste x-Achsen-Beschriftung mit der Einheit "mol quanta m^-2 s^-1"
+    plt.xlabel("Light Intensity (mol quanta m$^{-2}$ s$^{-1}$)")
+    plt.ylabel("Net Photosynthesis (μmol O$_2$ h$^{-1}$ mg Chl a$^{-1}$)")
+    
+    # Horizontal line at y = 0 (light gray, dashed)
+    plt.axhline(0, color='lightgrey', linewidth=1, linestyle='--')
+    
+    # 'clean_data[sheet]' is assumed to contain the cleaned raw data for each date (sheet).
+    # The first column holds the light intensities, subsequent columns contain data for each condition.
+    I_data = clean_data[sheet][clean_data[sheet].columns[0]]
+    
+    # Loop over each treatment (row) in the DataFrame with fit parameters
+    for j, row in df_fit.iterrows():
+        # For sheet "17-11", skip plotting if the fit parameters are missing
+        if sheet == "17-11" and (np.isnan(row['Pmax']) or np.isnan(row['Alpha'])):
+            continue
+        
+        treatment = row['Condition']
+        # Extract the corresponding raw data for this treatment
+        I = I_data
+        P = clean_data[sheet][treatment]
+        
+        # Plot the raw data as a scatter plot
+        plt.scatter(
+            I, P,
+            color=colors[j % len(colors)],
+            marker=markers[j % len(markers)],
+            label=treatment
+        )
+        
+        # Create a range of light intensities for plotting the fitted curve
+        I_range = np.linspace(0, np.nanmax(I), 200)
+        
+        # Decide which model to use based on whether a photoinhibition parameter (Beta) is > 0
+        if row['Beta'] and row['Beta'] > 0:
+            P_fit = PI_photoinhib(I_range, row['Pmax'], row['Alpha'], row['Beta'], row['R'])
+        else:
+            P_fit = PI_hyperbolic(I_range, row['Pmax'], row['Alpha'], row['R'])
+        
+        # Plot the modeled PI curve
+        plt.plot(I_range, P_fit, color=colors[j % len(colors)])
+    
+    plt.legend(title="Treatment", fontsize=8, loc='lower right')
+    plt.tight_layout()
+    
+    # Save the figure as a high-resolution PNG file
+    plt.savefig(f"PI_curve_{sheet}.png", dpi=300)
+    plt.show()
+    plt.close()
+# Appendix: Statistical Comparison of Photosynthetic Parameters
+#           Brownification vs. No Brownification Treatments
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.stats import ttest_ind
+
+# --------------------------------------------------------------
+# 1) Load Excel file containing parameter estimates per sample date.
+# --------------------------------------------------------------
+file_name = "PI_Parameters_Mean.xlsx"
+sheets_dict = pd.read_excel(file_name, sheet_name=None)
+
+# Remove the sheet '17-11' if it exists
+if "17-11" in sheets_dict:
+    del sheets_dict["17-11"]
+
+# Concatenate all remaining sheets into a single DataFrame
+df = pd.concat(sheets_dict.values(), ignore_index=True)
+
+# --------------------------------------------------------------
+# 2) Identify treatment column name ('Treatment' or 'Condition')
+# --------------------------------------------------------------
+if "Treatment" in df.columns:
+    treatment_col = "Treatment"
+elif "Condition" in df.columns:
+    treatment_col = "Condition"
+else:
+    raise KeyError("Neither 'Treatment' nor 'Condition' column found.")
+
+# --------------------------------------------------------------
+# 3) Define Brownification groups based on treatment names
+# --------------------------------------------------------------
+brown_treatments = ["MHW + Brownification", "High Temperature + MHW + Brownification"]
+df['Brownification'] = df[treatment_col].isin(brown_treatments)
+
+# --------------------------------------------------------------
+# 4) Define parameters to compare
+# --------------------------------------------------------------
+parameters = ['Pmax', 'Alpha', 'R', 'Ik', 'Beta']
+
+# --------------------------------------------------------------
+# 5) Split dataset into two groups
+# --------------------------------------------------------------
+brown_df = df[df['Brownification'] == True]
+no_brown_df = df[df['Brownification'] == False]
+
+# --------------------------------------------------------------
+# 6) Perform Welch's t-tests
+# --------------------------------------------------------------
+test_results = {}
+for param in parameters:
+    if param not in df.columns:
+        continue
+    brown_values = brown_df[param].dropna()
+    no_brown_values = no_brown_df[param].dropna()
+    t_stat, p_val = ttest_ind(brown_values, no_brown_values, equal_var=False)
+    test_results[param] = {
+        'Mean (Brownification)': brown_values.mean(),
+        'Mean (No Brownification)': no_brown_values.mean(),
+        't-statistic': t_stat,
+        'p-value': p_val
+    }
+
+# --------------------------------------------------------------
+# 7) Display results in console
+# --------------------------------------------------------------
+print("\nComparison of Brownification vs. No Brownification (Welch's t-tests):")
+for param, results in test_results.items():
+    print(f"Parameter: {param}")
+    print(f"  Mean (Brownification):    {results['Mean (Brownification)']:.4f}")
+    print(f"  Mean (No Brownification): {results['Mean (No Brownification)']:.4f}")
+    print(f"  t-statistic:              {results['t-statistic']:.4f}")
+    print(f"  p-value:                  {results['p-value']:.4g}")
+    print("-" * 50)
+
+# --------------------------------------------------------------
+# 8) Generate boxplots for visual comparison
+# --------------------------------------------------------------
+fig, axes = plt.subplots(nrows=1, ncols=len(parameters), figsize=(15, 5))
+
+for i, param in enumerate(parameters):
+    if param not in df.columns:
+        continue
+    temp_df = df[[param, 'Brownification']].dropna()
+    temp_df['Group'] = temp_df['Brownification'].apply(lambda x: 'Brownification' if x else 'No Brownification')
+    axes[i].boxplot([
+        temp_df[temp_df['Group'] == 'Brownification'][param],
+        temp_df[temp_df['Group'] == 'No Brownification'][param]
+    ], labels=['Brownification', 'No Brownification'])
+    axes[i].set_title(param)
+
+plt.tight_layout()
+plt.show()
+
+
