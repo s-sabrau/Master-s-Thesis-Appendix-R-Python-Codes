@@ -1,0 +1,288 @@
+"""
+Appendix: LOI Analysis Code
+
+This script performs statistical analysis on the "LOI.xlsx" dataset. 
+It includes data loading, exploratory data analysis, tests for normality and homogeneity 
+of variances, group comparisons using ANOVA or Kruskal-Wallis tests, and pairwise comparisons 
+against the "Field Sample" group.
+"""
+
+import pandas as pd
+import numpy as np
+import scipy.stats as stats
+import seaborn as sns
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+from statsmodels.stats.multicomp import pairwise_tukeyhsd
+from scipy.stats import shapiro, levene, kruskal, mannwhitneyu, ttest_ind
+import scikit_posthocs as sp
+
+# ==============================================================================
+# 1) Load Dataset
+# ==============================================================================
+# Read data from the Excel file "LOI.xlsx"
+df = pd.read_excel("LOI.xlsx")
+
+# Keep only the relevant columns and remove rows with missing values
+df = df[['Treatment', 'LOI in %']].dropna()
+df.rename(columns={'LOI in %': 'LOI'}, inplace=True)
+
+# Convert the LOI values to numeric; drop rows where conversion fails
+df['LOI'] = pd.to_numeric(df['LOI'], errors='coerce')
+df.dropna(inplace=True)
+
+# ==============================================================================
+# 2) Exploratory Data Analysis (EDA)
+# ==============================================================================
+# Display descriptive statistics for LOI by treatment group
+print(df.groupby('Treatment')['LOI'].describe())
+
+# Create a boxplot to visualize the LOI distribution across treatments
+plt.figure(figsize=(10, 6))
+sns.boxplot(x='Treatment', y='LOI', data=df, palette='viridis')
+plt.xticks(rotation=90)
+plt.title("LOI Distribution Across Treatments")
+plt.show()
+
+# ==============================================================================
+# 3) Normality and Homogeneity of Variance Tests
+# ==============================================================================
+# Perform Shapiro-Wilk test for normality for each treatment group
+shapiro_results = {treatment: shapiro(df[df['Treatment'] == treatment]['LOI'])
+                   for treatment in df['Treatment'].unique()}
+print("\nShapiro-Wilk Test Results:", shapiro_results)
+
+# Perform Levene's test to check for equality of variances across groups
+levene_test = levene(*[df[df['Treatment'] == t]['LOI'] for t in df['Treatment'].unique()])
+print("\nLevene Test for Variance Equality:", levene_test)
+
+# ==============================================================================
+# 4) Group Comparison: ANOVA or Kruskal-Wallis Test
+# ==============================================================================
+# Check if all groups pass normality (p > 0.05) and have equal variances (Levene's p > 0.05)
+if all(p > 0.05 for _, p in shapiro_results.values()) and levene_test.pvalue > 0.05:
+    # ANOVA (Assuming normal distribution and equal variances)
+    model = smf.ols('LOI ~ C(Treatment)', data=df).fit()
+    anova_table = sm.stats.anova_lm(model, typ=2)
+    print("\nANOVA Results:\n", anova_table)
+
+    # Post-hoc test: Tukey's Honest Significant Difference (HSD)
+    tukey = pairwise_tukeyhsd(df['LOI'], df['Treatment'])
+    print("\nTukey HSD Test:\n", tukey)
+else:
+    # Kruskal-Wallis test (if data are non-normal or variances are unequal)
+    kruskal_test = kruskal(*[df[df['Treatment'] == t]['LOI'] for t in df['Treatment'].unique()])
+    print("\nKruskal-Wallis Test:", kruskal_test)
+
+    # Post-hoc test: Dunn's Test with Bonferroni correction for multiple comparisons
+    dunn_test = sp.posthoc_dunn(df, val_col='LOI', group_col='Treatment', p_adjust='bonferroni')
+    print("\nDunn’s Test (Post-hoc for Kruskal-Wallis):\n", dunn_test)
+
+# ==============================================================================
+# 5) Pairwise Comparisons: Each Group vs "Field Sample"
+# ==============================================================================
+# Extract LOI values for the "Field Sample" treatment
+field_sample = df[df['Treatment'] == 'Field Sample']['LOI']
+
+# Compare each treatment group with the "Field Sample"
+for treatment in df['Treatment'].unique():
+    if treatment != "Field Sample":
+        treatment_group = df[df['Treatment'] == treatment]['LOI']
+        
+        # If both groups are normally distributed (p > 0.05 in Shapiro-Wilk test),
+        # perform an independent t-test; otherwise, use the Mann-Whitney U-Test.
+        if shapiro_results[treatment][1] > 0.05 and shapiro_results["Field Sample"][1] > 0.05:
+            test_result = ttest_ind(field_sample, treatment_group, equal_var=(levene_test.pvalue > 0.05))
+            test_type = "t-Test"
+        else:
+            test_result = mannwhitneyu(field_sample, treatment_group, alternative="two-sided")
+            test_type = "Mann-Whitney U-Test"
+
+        print(f"\n{test_type} for Field Sample vs {treatment}: p-value = {test_result.pvalue}")
+
+"""
+
+
+This script performs the following steps:
+1. Loads and prepares the dataset from "LOI.xlsx".
+2. Computes descriptive statistics (count, mean, and standard deviation) for LOI by treatment.
+3. Orders the treatment groups with "Field Sample" first and the remaining treatments in alphabetical order.
+4. Sets the font to Times New Roman.
+5. Groups the LOI data by treatment for boxplot visualization.
+6. Generates a boxplot using the Viridis colormap.
+7. Configures the x-axis to display treatment indices.
+8. Creates a legend that maps the numerical index to the corresponding treatment names.
+"""
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+
+# ==============================================================================
+# 1. Load and prepare the dataset
+# ==============================================================================
+# Read data from the Excel file "LOI.xlsx"
+df = pd.read_excel("LOI.xlsx")
+
+# Keep only the relevant columns and drop any rows with missing values
+df = df[['Treatment', 'LOI in %']].dropna()
+
+# Rename column 'LOI in %' to 'LOI' for simplicity
+df.rename(columns={'LOI in %': 'LOI'}, inplace=True)
+
+# Convert LOI values to numeric; drop rows where conversion fails
+df['LOI'] = pd.to_numeric(df['LOI'], errors='coerce')
+df.dropna(inplace=True)
+
+# ==============================================================================
+# 2. Calculate descriptive statistics per treatment
+# ==============================================================================
+# Compute count, mean, and standard deviation of LOI for each treatment group
+stats_df = df.groupby('Treatment')['LOI'].agg(['count', 'mean', 'std'])
+print("Statistics per Treatment (Count, Mean, Standard Deviation):")
+print(stats_df)
+print()
+
+# ==============================================================================
+# 3. Define the order of treatments: "Field Sample" first, then others alphabetically
+# ==============================================================================
+# Get a list of all unique treatments
+all_treatments = df['Treatment'].unique().tolist()
+
+# Sort treatments other than "Field Sample" alphabetically
+other_treatments = sorted([t for t in all_treatments if t != 'Field Sample'])
+
+# Combine "Field Sample" with the sorted list of other treatments
+treatments = ['Field Sample'] + other_treatments
+
+# ==============================================================================
+# 4. Set the font to Times New Roman
+# ==============================================================================
+plt.rcParams["font.family"] = "Times New Roman"
+
+# ==============================================================================
+# 5. Group the data for the boxplot
+# ==============================================================================
+# Prepare the LOI values for each treatment group in the specified order
+data_to_plot = [df[df['Treatment'] == t]['LOI'].values for t in treatments]
+
+# ==============================================================================
+# 6. Create a boxplot using the Viridis colormap
+# ==============================================================================
+plt.figure(figsize=(8, 6))
+
+# Generate the boxplot with customization options
+bp = plt.boxplot(
+    data_to_plot,
+    notch=False,
+    vert=True,
+    patch_artist=True,
+    showfliers=True
+)
+
+# Define the Viridis colormap with as many colors as there are treatments
+cmap = plt.cm.get_cmap("viridis", len(treatments))
+
+# Color each box using the colormap
+for i, box in enumerate(bp['boxes']):
+    box.set_facecolor(cmap(i))
+    box.set_edgecolor('black')
+    box.set_linewidth(1.5)
+
+# Customize whiskers, caps, medians, and outliers
+for whisker in bp['whiskers']:
+    whisker.set_color('black')
+    whisker.set_linewidth(1.2)
+
+for cap in bp['caps']:
+    cap.set_color('black')
+    cap.set_linewidth(1.2)
+
+for median in bp['medians']:
+    median.set_color('black')
+    median.set_linewidth(2)
+
+for flier in bp['fliers']:
+    flier.set_marker('o')
+    flier.set_markerfacecolor('black')
+    flier.set_markeredgecolor('black')
+    flier.set_markersize(4)
+
+# ==============================================================================
+# 7. Configure the x-axis: Display only treatment indices
+# ==============================================================================
+# Create x-axis positions corresponding to each treatment
+x_positions = np.arange(1, len(treatments) + 1)
+plt.xticks(ticks=x_positions, labels=x_positions, rotation=0)
+
+plt.xlabel("Index of Treatment", fontsize=12)
+plt.ylabel("Loss-on-ignition (%)", fontsize=12)
+plt.title("Loss-on-ignition (LOI) in Fucus sp.", fontsize=14)
+
+# ==============================================================================
+# 8. Create a legend mapping indices to treatment names
+# ==============================================================================
+patches = []
+for i, treatment in enumerate(treatments):
+    color_patch = mpatches.Patch(
+        color=cmap(i),
+        label=f"{i+1} — {treatment}"
+    )
+    patches.append(color_patch)
+
+# Position the legend to the right of the plot
+plt.legend(handles=patches, title="Treatments", bbox_to_anchor=(1.01, 1), loc='upper left')
+
+plt.tight_layout()
+plt.show()
+
+"""
+Appendix: Calculation of Mean and Standard Deviation for LOI by Treatment
+
+This script calculates the mean and standard deviation of the LOI values for each treatment group.
+It then creates a formatted string "Mean ± SD" for each group and prints a summary table.
+"""
+
+import pandas as pd
+
+# ------------------------------------------------------------------------------
+# 1. Data Loading and Preparation
+# ------------------------------------------------------------------------------
+# Assume you already have your DataFrame `df` with columns "Treatment" and "LOI".
+# Example:
+# df = pd.read_excel("LOI.xlsx")
+# df = df[['Treatment', 'LOI in %']].dropna()
+# df.rename(columns={'LOI in %': 'LOI'}, inplace=True)
+# df['LOI'] = pd.to_numeric(df['LOI'], errors='coerce')
+# df.dropna(inplace=True)
+
+# ------------------------------------------------------------------------------
+# 2. Calculate Mean and Standard Deviation per Treatment
+# ------------------------------------------------------------------------------
+# Group the data by "Treatment" and calculate the mean and standard deviation of the LOI values.
+stats_df = df.groupby('Treatment')['LOI'].agg(['mean', 'std']).reset_index()
+
+# ------------------------------------------------------------------------------
+# 3. Create a Formatted "Mean ± SD" Column
+# ------------------------------------------------------------------------------
+# For each treatment, format the mean and standard deviation into a string "mean ± std".
+stats_df['Mean ± SD'] = stats_df.apply(
+    lambda row: f"{row['mean']:.2f} ± {row['std']:.2f}",
+    axis=1
+)
+
+# ------------------------------------------------------------------------------
+# 4. Select Only the Relevant Columns
+# ------------------------------------------------------------------------------
+# If only the treatment and the formatted "Mean ± SD" are needed, reduce the DataFrame.
+stats_df = stats_df[['Treatment', 'Mean ± SD']]
+
+# ------------------------------------------------------------------------------
+# 5. Display the Summary Table
+# ------------------------------------------------------------------------------
+print("Table X. Mean ± Standard Deviation (SD) of LOI values in Fucus sp. by Treatment:\n")
+print(stats_df.to_string(index=False))
+
+
