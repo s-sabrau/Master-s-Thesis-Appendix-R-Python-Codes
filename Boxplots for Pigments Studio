@@ -1,0 +1,216 @@
+# ==============================================================================
+# Appendix: Data Processing and Visualization of Chlorophyll-a Concentration
+# ==============================================================================
+
+# This R script processes and visualizes chlorophyll-a concentration data
+# across different experimental treatments and measurement dates. The dataset
+# is loaded from an Excel file, transformed into a tidy format, and visualized 
+# using boxplots to compare the chlorophyll-a concentration among treatments.
+
+
+# ==============================================================================
+# Required Packages
+# ==============================================================================
+insta
+# Load necessary libraries
+library(readxl)   # To read data from Excel files
+library(tidyr)    # To reshape data from wide to long format
+library(dplyr)    # To manipulate and clean data
+library(ggplot2)  # For data visualization
+library(viridis)  # Colorblind-friendly color scale
+
+# ==============================================================================
+# Load and Prepare Dataset
+# ==============================================================================
+
+# Read data from the Excel file
+# The dataset is extracted from the sheet named 'Chlorophyll-a-complete'
+data <- read_excel("PIgments-Calculation.xlsx", sheet = "Chlorophyll-a-complete")
+
+# Convert relevant measurement columns to numeric format
+# This step ensures that chlorophyll-a concentration values are properly 
+# recognized as numerical data for further processing and visualization.
+data <- data %>%
+  mutate(across(starts_with("mg Chlorophyll a per g biomass"), as.numeric))
+
+# Reshape data from wide to long format
+# Each measurement date is transformed into a separate row, creating a 
+# "tidy" dataset suitable for visualization.
+data_long <- data %>%
+  pivot_longer(
+    cols = starts_with("mg Chlorophyll a per g biomass"),
+    names_to = "MeasurementDate",
+    values_to = "Chlorophyll_a"
+  )
+
+# ==============================================================================
+# Define Measurement Date Order and Labels
+# ==============================================================================
+
+# Reorder and rename measurement dates for better visualization
+# This step ensures that dates appear chronologically and in a clear format
+data_long$MeasurementDate <- factor(
+  data_long$MeasurementDate,
+  levels = c("mg Chlorophyll a per g biomass (25.10.2024)",
+             "mg Chlorophyll a per g biomass (02.11.2024)",
+             "mg Chlorophyll a per g biomass (17.11.2024)",
+             "mg Chlorophyll a per g biomass (25.11.2024)",
+             "mg Chlorophyll a per g biomass (10.12.2024)"),
+  labels = c("25.10.", "02.11.", "17.11.", "25.11.", "10.12.")
+)
+
+# ==============================================================================
+# Generate Boxplot for Chlorophyll-a Concentration by Treatment
+# ==============================================================================
+
+# Create a boxplot to visualize the distribution of chlorophyll-a concentrations
+# across different measurement dates and treatments.
+plot <- ggplot(data_long, aes(x = MeasurementDate, y = Chlorophyll_a, fill = Treatment)) +
+  
+  # Boxplot representation with adjusted width and alpha for better readability
+  geom_boxplot(width = 0.7, outlier.shape = 16, outlier.size = 2, alpha = 0.8) +  
+  
+  # Facet by Treatment to create separate panels for each treatment
+  facet_wrap(~ Treatment, ncol = 2) +  
+  
+  # Apply a colorblind-friendly viridis color scale
+  scale_fill_viridis_d(option = "D", begin = 0.2, end = 0.8) +  
+  
+  # Set a clean theme 
+  theme_classic(base_size = 16) +  
+  
+  # Customize theme elements for better clarity and professional appearance
+  theme(
+    text = element_text(family = "Times New Roman"), # Set font to Times New Roman
+    strip.background = element_rect(fill = "white", color = "black"), # Facet labels
+    legend.position = "none",  # Remove legend since facets indicate treatments
+    axis.line = element_line(size = 0.5), # Adjust axis line thickness
+    axis.ticks = element_line(size = 0.5), # Adjust tick marks
+    plot.title = element_text(hjust = 0.5, face = "bold"), # Center title in bold
+    axis.title = element_text(face = "bold"), # Bold axis labels
+    panel.grid.major = element_line(size = 0.3, linetype = "dashed"), # Add subtle grid lines
+    axis.text.x = element_text(angle = 45, hjust = 1) # Rotate x-axis labels for better readability
+  ) +
+  
+  # Define axis labels and plot title
+  labs(
+    title = "Chlorophyll-a Concentration by Treatment",
+    x = "Measurement Date",
+    y = "mg Chlorophyll a per g Biomass"
+  )
+
+# ==============================================================================
+# Display the Plot
+# ==============================================================================
+
+# Print the final publication-quality boxplot
+print(plot)
+
+# ==============================================================================
+# Appendix: Data Processing and Visualization of Chlorophyll-c Concentration
+# ==============================================================================
+
+# This R script processes and visualizes chlorophyll-c concentration data
+# across different experimental treatments and measurement dates. The dataset
+# is loaded from an Excel file, transformed into a tidy format, and visualized 
+# using boxplots to compare the chlorophyll-c concentration among treatments.
+
+
+# ==============================================================================
+# Required Packages
+# ==============================================================================
+
+# Load necessary libraries
+library(readxl)   # To read data from Excel files
+library(tidyr)    # To reshape data from wide to long format
+library(dplyr)    # To manipulate and clean data
+library(ggplot2)  # For data visualization
+library(viridis)  # Colorblind-friendly color scale
+
+# ==============================================================================
+# Load and Prepare Dataset
+# ==============================================================================
+
+# Read data from the Excel file
+# The dataset is extracted from the sheet named 'Chlorophyll-c-complete'
+data <- read_excel("PIgments-Calculation.xlsx", sheet = "Chlorophyll-c-complete")
+
+# Convert relevant measurement columns to numeric format
+# This step ensures that chlorophyll-c concentration values are properly 
+# recognized as numerical data for further processing and visualization.
+data <- data %>%
+  mutate(across(starts_with("mg Chlorophyll c per g biomass"), as.numeric))
+
+# Reshape data from wide to long format
+# Each measurement date is transformed into a separate row, creating a 
+# "tidy" dataset suitable for visualization.
+data_long <- data %>%
+  pivot_longer(
+    cols = starts_with("mg Chlorophyll c per g biomass"),
+    names_to = "MeasurementDate",
+    values_to = "Chlorophyll_c"
+  )
+
+# ==============================================================================
+# Define Measurement Date Order and Labels
+# ==============================================================================
+
+# Reorder and rename measurement dates for better visualization
+# This step ensures that dates appear chronologically and in a clear format
+data_long$MeasurementDate <- factor(
+  data_long$MeasurementDate,
+  levels = c("mg Chlorophyll c per g biomass (25.10.2024)",
+             "mg Chlorophyll c per g biomass (02.11.2024)",
+             "mg Chlorophyll c per g biomass (17.11.2024)",
+             "mg Chlorophyll c per g biomass (25.11.2024)",
+             "mg Chlorophyll c per g biomass (10.12.2024)"),
+  labels = c("25.10.", "02.11.", "17.11.", "25.11.", "10.12.")
+)
+
+# ==============================================================================
+# Generate Boxplot for Chlorophyll-c Concentration by Treatment
+# ==============================================================================
+
+# Create a boxplot to visualize the distribution of chlorophyll-c concentrations
+# across different measurement dates and treatments.
+plot <- ggplot(data_long, aes(x = MeasurementDate, y = Chlorophyll_c, fill = Treatment)) +
+  
+  # Boxplot representation with adjusted width and alpha for better readability
+  geom_boxplot(width = 0.7, outlier.shape = 16, outlier.size = 2, alpha = 0.8) +  
+  
+  # Facet by Treatment to create separate panels for each treatment
+  facet_wrap(~ Treatment, ncol = 2) +  
+  
+  # Apply a colorblind-friendly viridis color scale
+  scale_fill_viridis_d(option = "D", begin = 0.2, end = 0.8) +  
+  
+  # Set a clean theme
+  theme_classic(base_size = 16) +  
+  
+  #  theme elements
+  theme(
+    text = element_text(family = "Times New Roman"), # Set font to Times New Roman
+    strip.background = element_rect(fill = "white", color = "black"), # Facet labels
+    legend.position = "none",  # Remove legend since facets indicate treatments
+    axis.line = element_line(size = 0.5), # Adjust axis line thickness
+    axis.ticks = element_line(size = 0.5), # Adjust tick marks
+    plot.title = element_text(hjust = 0.5, face = "bold"), # Center title in bold
+    axis.title = element_text(face = "bold"), # Bold axis labels
+    panel.grid.major = element_line(size = 0.3, linetype = "dashed"), # Add subtle grid lines
+    axis.text.x = element_text(angle = 45, hjust = 1) # Rotate x-axis labels for better readability
+  ) +
+  
+  # Define axis labels and plot title
+  labs(
+    title = "Chlorophyll-c Concentration by Treatment",
+    x = "Measurement Date",
+    y = "mg Chlorophyll c per g Biomass"
+  )
+
+# ==============================================================================
+# Display the Plot
+# ==============================================================================
+
+# Print the final publication-quality boxplot
+print(plot)
+
