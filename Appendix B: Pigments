@@ -1,0 +1,400 @@
+"""
+Appendix: Descriptive Statistics for Chlorophyll Measurements
+
+This script processes data from the "PIgments-Calculation.xlsx" file for Chlorophyll-a.
+It reads the specified sheet, reshapes the data into long format, computes descriptive 
+statistics, and exports the results to an Excel file.
+
+Note: The same script can be used for Chlorophyll-c. Simply change the sheet name from 
+"Chlorophyll-a-complete" to "Chlorophyll-c-complete". Ensure that the column names for the 
+measurements are adjusted accordingly if they differ.
+"""
+
+import pandas as pd
+import numpy as np
+
+# ------------------------------
+# Step 1: Read the Excel file
+# ------------------------------
+# File path and sheet name (for Chlorophyll-a)
+file_path = "PIgments-Calculation.xlsx"
+sheet_name = "Chlorophyll-a-complete"  # For Chlorophyll-c, change this to "Chlorophyll-c-complete"
+
+# Read the specified sheet into a DataFrame
+df = pd.read_excel(file_path, sheet_name=sheet_name)
+
+# Verify the column names to ensure the data has been imported correctly
+print("Columns in the dataset:")
+print(df.columns)
+
+# Expected columns (example):
+# - "Sheet" (Sample IDs)
+# - "Treatment" (Treatment groups)
+# - "mg Chlorophyll a per g biomass (25.10.2024)"
+# - "mg Chlorophyll a per g biomass (02.11.2024)"
+# - "mg Chlorophyll a per g biomass (17.11.2024)"
+# - "mg Chlorophyll a per g biomass (25.11.2024)"
+# - "mg Chlorophyll a per g biomass (10.12.2024)"
+
+# ------------------------------
+# Step 2: Reshape into Long Format
+# ------------------------------
+# Define the measurement columns for the different dates
+value_vars = [
+    "mg Chlorophyll a per g biomass (25.10.2024)",
+    "mg Chlorophyll a per g biomass (02.11.2024)",
+    "mg Chlorophyll a per g biomass (17.11.2024)",
+    "mg Chlorophyll a per g biomass (25.11.2024)",
+    "mg Chlorophyll a per g biomass (10.12.2024)"
+]
+
+# Use melt to transform the DataFrame from wide to long format.
+df_long = df.melt(
+    id_vars=["Sheet", "Treatment"],
+    value_vars=value_vars,
+    var_name="MeasurementDate",
+    value_name="Chlorophyll_a"
+)
+
+# Optional: Extract the date from the column name using a regular expression.
+df_long["MeasurementDate"] = df_long["MeasurementDate"].str.extract(r"\((.*?)\)")
+
+# ------------------------------
+# Step 3: Compute Descriptive Statistics
+# ------------------------------
+# Define a function to compute the interquartile range (IQR)
+def compute_iqr(x):
+    return np.percentile(x, 75) - np.percentile(x, 25)
+
+# Group by Treatment and MeasurementDate and calculate descriptive statistics
+descriptive_stats = df_long.groupby(["Treatment", "MeasurementDate"])["Chlorophyll_a"].agg(
+    n="count",
+    mean="mean",
+    std="std",
+    median="median",
+    IQR=compute_iqr
+).reset_index()
+
+# Display the descriptive statistics
+print("Descriptive Statistics:")
+print(descriptive_stats)
+
+# ------------------------------
+# Step 4: Export the Descriptive Statistics
+# ------------------------------
+output_file = "descriptive_statistics_chlorophyll_a.xlsx"
+descriptive_stats.to_excel(output_file, index=False)
+print(f"Descriptive statistics have been exported to '{output_file}'.")
+
+"""
+Appendix: Mixed ANOVA Analysis for Chlorophyll Measurements
+
+This script reads data from "PIgments-Calculation.xlsx" for Chlorophyll-a,
+reshapes the data from wide to long format, and performs a mixed ANOVA.
+In the analysis:
+- "Chlorophyll_a" is the dependent variable.
+- "Treatment" is the between-subject factor.
+- "MeasurementDate" is the within-subject factor (repeated measurements).
+- "Sheet" is the subject/sample identifier.
+
+Note: To apply the same script for Chlorophyll-c, simply change the sheet name from 
+"Chlorophyll-a-complete" to "Chlorophyll-c-complete" (and adjust column names if necessary).
+"""
+
+import pandas as pd
+import numpy as np
+import pingouin as pg  # For Mixed ANOVA
+
+# ------------------------------
+# Step 1: Read the Excel File
+# ------------------------------
+file_path = "PIgments-Calculation.xlsx"
+sheet_name = "Chlorophyll-a-complete"  # For Chlorophyll-c, change this to "Chlorophyll-c-complete"
+
+# Read the specified sheet into a DataFrame
+df = pd.read_excel(file_path, sheet_name=sheet_name)
+
+# Optionally, check the column names to verify the import
+print("Columns in the dataset:")
+print(df.columns)
+
+# Expected columns (example):
+# - "Sheet" (Sample IDs)
+# - "Treatment" (Treatment groups)
+# - "mg Chlorophyll a per g biomass (25.10.2024)"
+# - "mg Chlorophyll a per g biomass (02.11.2024)"
+# - "mg Chlorophyll a per g biomass (17.11.2024)"
+# - "mg Chlorophyll a per g biomass (25.11.2024)"
+# - "mg Chlorophyll a per g biomass (10.12.2024)"
+
+# ------------------------------
+# Step 2: Reshape Data to Long Format
+# ------------------------------
+# Define the measurement columns (value_vars)
+value_vars = [
+    "mg Chlorophyll a per g biomass (25.10.2024)",
+    "mg Chlorophyll a per g biomass (02.11.2024)",
+    "mg Chlorophyll a per g biomass (17.11.2024)",
+    "mg Chlorophyll a per g biomass (25.11.2024)",
+    "mg Chlorophyll a per g biomass (10.12.2024)"
+]
+
+# Melt the DataFrame from wide to long format
+df_long = df.melt(
+    id_vars=["Sheet", "Treatment"],
+    value_vars=value_vars,
+    var_name="MeasurementDate",
+    value_name="Chlorophyll_a"
+)
+
+# Extract the date from the column names using a regular expression
+df_long["MeasurementDate"] = df_long["MeasurementDate"].str.extract(r"\((.*?)\)")
+
+# Optionally, display the first few rows of the transformed DataFrame
+print("\nFirst few rows of the transformed dataset:")
+print(df_long.head())
+
+# ------------------------------
+# Step 3: Perform Mixed ANOVA
+# ------------------------------
+# In this model:
+# - "Chlorophyll_a" is the dependent variable (DV)
+# - "Treatment" is the between-subject factor
+# - "MeasurementDate" is the within-subject factor (repeated measures)
+# - "Sheet" is the subject/sample identifier
+aov_results = pg.mixed_anova(data=df_long,
+                             dv="Chlorophyll_a",
+                             within="MeasurementDate",
+                             between="Treatment",
+                             subject="Sheet")
+
+print("\nMixed ANOVA Results:")
+print(aov_results)
+
+
+# First, check which columns are present in the DataFrame "posthoc_within":
+print(posthoc_within.columns)
+
+# Then, print a subset of columns to inspect their values.
+# Here, we display the columns: 'A', 'B', 'T', 'p-corr', and 'hedges'
+print(posthoc_within[['A', 'B', 'T', 'p-corr', 'hedges']])
+
+"""
+Appendix: Mixed Analysis for Chlorophyll Measurements
+
+This script performs the following analyses:
+
+Part 1: Repeated Measures ANOVA for Each Treatment
+----------------------------------------------------
+For each unique treatment in the long-format dataset (df_long), a repeated measures ANOVA is conducted.
+In the ANOVA:
+- Dependent variable: "Chlorophyll_a"
+- Within-subject factor: "MeasurementDate"
+- Subject identifier: "Sheet"
+
+Part 2: Correlation Analysis between Chlorophyll‑a and Chlorophyll‑c
+---------------------------------------------------------------------
+1. Reads data from the Excel file "PIgments-Calculation.xlsx" for both Chlorophyll‑a and Chlorophyll‑c.
+2. Transforms both datasets from wide to long format.
+3. Merges the two long-format DataFrames on "Sheet", "Treatment", and "MeasurementDate".
+4. Cleans the merged dataset by replacing infinite values and dropping missing values.
+5. Computes both Pearson and Spearman correlations between Chlorophyll‑a and Chlorophyll‑c.
+"""
+
+import pandas as pd
+import numpy as np
+import pingouin as pg  # For repeated measures ANOVA
+from scipy.stats import pearsonr, spearmanr
+
+# ===========================
+# Part 1: Repeated Measures ANOVA for Each Treatment
+# ===========================
+# Assume that df_long is already prepared (i.e. in long format).
+# For example, df_long might have been created via pd.melt() with columns:
+# "Sheet", "Treatment", "MeasurementDate", and "Chlorophyll_a"
+
+for treatment in df_long["Treatment"].unique():
+    print(f"\nRepeated Measures ANOVA for Treatment: {treatment}")
+    # Select data for the current treatment
+    data_treat = df_long[df_long["Treatment"] == treatment]
+    
+    # Perform repeated measures ANOVA:
+    # - Dependent variable: 'Chlorophyll_a'
+    # - Within-subject factor: 'MeasurementDate'
+    # - Subject identifier: 'Sheet'
+    rm_results = pg.rm_anova(dv='Chlorophyll_a', within='MeasurementDate', subject='Sheet',
+                             data=data_treat, detailed=True)
+    print(rm_results)
+
+# ===========================
+# Part 2: Correlation Analysis between Chlorophyll‑a and Chlorophyll‑c
+# ===========================
+# Step 1: Read Data from Excel File
+file_path = "PIgments-Calculation.xlsx"
+sheet_a = "Chlorophyll-a-complete"  # Sheet for Chlorophyll a
+sheet_c = "Chlorophyll-c-complete"  # Sheet for Chlorophyll c
+
+# Read both sheets into separate DataFrames
+df_a = pd.read_excel(file_path, sheet_name=sheet_a)
+df_c = pd.read_excel(file_path, sheet_name=sheet_c)
+
+# Optionally, check the column names for verification
+print("Columns in Chlorophyll a dataset:", df_a.columns)
+print("Columns in Chlorophyll c dataset:", df_c.columns)
+
+# Step 2: Transform Data into Long Format
+# Define the measurement columns for Chlorophyll a
+value_vars_a = [
+    "mg Chlorophyll a per g biomass (25.10.2024)",
+    "mg Chlorophyll a per g biomass (02.11.2024)",
+    "mg Chlorophyll a per g biomass (17.11.2024)",
+    "mg Chlorophyll a per g biomass (25.11.2024)",
+    "mg Chlorophyll a per g biomass (10.12.2024)"
+]
+
+# Define the measurement columns for Chlorophyll c
+value_vars_c = [
+    "mg Chlorophyll c per g biomass (25.10.2024)",
+    "mg Chlorophyll c per g biomass (02.11.2024)",
+    "mg Chlorophyll c per g biomass (17.11.2024)",
+    "mg Chlorophyll c per g biomass (25.11.2024)",
+    "mg Chlorophyll c per g biomass (10.12.2024)"
+]
+
+# Transform df_a (Chlorophyll a) into long format
+df_a_long = df_a.melt(
+    id_vars=["Sheet", "Treatment"],
+    value_vars=value_vars_a,
+    var_name="MeasurementDate",
+    value_name="Chlorophyll_a"
+)
+# Extract the date from the column names using a regular expression
+df_a_long["MeasurementDate"] = df_a_long["MeasurementDate"].str.extract(r"\((.*?)\)")
+
+# Transform df_c (Chlorophyll c) into long format
+df_c_long = df_c.melt(
+    id_vars=["Sheet", "Treatment"],
+    value_vars=value_vars_c,
+    var_name="MeasurementDate",
+    value_name="Chlorophyll_c"
+)
+# Extract the date from the column names using a regular expression
+df_c_long["MeasurementDate"] = df_c_long["MeasurementDate"].str.extract(r"\((.*?)\)")
+
+# Step 3: Merge the Datasets
+# Merge the two long-format DataFrames on "Sheet", "Treatment", and "MeasurementDate"
+df_merged = pd.merge(df_a_long, df_c_long, on=["Sheet", "Treatment", "MeasurementDate"])
+print("First few rows of the merged dataset:")
+print(df_merged.head())
+
+# Step 4: Clean the Data
+# Replace infinite values with NaN and drop rows with missing values in the relevant columns
+df_merged_clean = df_merged.replace([np.inf, -np.inf], np.nan).dropna(subset=["Chlorophyll_a", "Chlorophyll_c"])
+print("Number of rows after cleaning:", len(df_merged_clean))
+
+# Step 5: Compute Correlations
+# Calculate Pearson correlation
+pearson_corr, pearson_p = pearsonr(df_merged_clean["Chlorophyll_a"], df_merged_clean["Chlorophyll_c"])
+print("\nPearson Correlation: {:.3f}, p-value: {:.3f}".format(pearson_corr, pearson_p))
+
+# Calculate Spearman correlation
+spearman_corr, spearman_p = spearmanr(df_merged_clean["Chlorophyll_a"], df_merged_clean["Chlorophyll_c"])
+print("Spearman Correlation: {:.3f}, p-value: {:.3f}".format(spearman_corr, spearman_p))
+
+"""
+Appendix: Merging Chlorophyll‑c Data with Photosynthetic Parameters and Correlation Analysis (Chlorophyll-a Data can be used the same way)
+
+This script performs the following analyses:
+
+1. Data Import:
+   - Reads data from the Excel file "PIgments-Calculation.xlsx" for Chlorophyll‑c measurements 
+     (from the "Chlorophyll-c-complete" sheet) and photosynthetic parameters from "PI_Parameters.xlsx".
+     
+2. Data Transformation:
+   - Converts the Chlorophyll‑c data from wide to long format by extracting the measurement date 
+     embedded in the column names and converting it to a datetime object.
+
+3. Data Preparation:
+   - Processes the parameter data by converting the date column to datetime format and ensuring 
+     that the sample identifier is consistent with the chlorophyll data.
+
+4. Data Merging:
+   - Merges the long-format Chlorophyll‑c data with the parameter data on the common columns "Sheet" and "Date".
+
+5. Correlation Analysis:
+   - Calculates Spearman correlations between Chlorophyll‑c and each photosynthetic parameter 
+     (Pmax, Alpha, R, Ik, Beta) overall as well as separately for each measurement date.
+"""
+
+import pandas as pd
+import numpy as np
+
+# ------------------------------------------------------------------
+# 1) Read both sheets
+# ------------------------------------------------------------------
+df_chl = pd.read_excel("PIgments-Calculation.xlsx", sheet_name="Chlorophyll-c-complete", decimal=",")
+df_params = pd.read_excel("PI_Parameters.xlsx", sheet_name="Sheet1", decimal=",")
+
+# ------------------------------------------------------------------
+# 2) Convert Chlorophyll data from wide to long format
+# ------------------------------------------------------------------
+chl_cols = [c for c in df_chl.columns if "mg Chlorophyll c per g biomass" in c]
+df_chl_long = df_chl.melt(
+    id_vars=["Sheet", "Treatment"],
+    value_vars=chl_cols,
+    var_name="Chl_Col",
+    value_name="Chlorophyll"
+)
+
+# ------------------------------------------------------------------
+# 3) Extract date from column name and convert to datetime
+# ------------------------------------------------------------------
+df_chl_long["Date_raw"] = df_chl_long["Chl_Col"].str.extract(r"\((\d{2}\.\d{2}\.\d{4})\)")
+df_chl_long["Date"] = pd.to_datetime(df_chl_long["Date_raw"], format="%d.%m.%Y", errors="coerce")
+df_chl_long.drop(columns=["Chl_Col", "Date_raw"], inplace=True)
+
+# ------------------------------------------------------------------
+# 4) Prepare the parameter data (e.g., Pmax, Alpha, R, Ik, Beta)
+# ------------------------------------------------------------------
+df_params["Date"] = pd.to_datetime(df_params["Day"], format="%d-%m-%y", errors="coerce")
+df_params.drop(columns=["Day"], inplace=True)
+if "Treatment" in df_params.columns:
+    df_params.rename(columns={"Treatment": "Sheet"}, inplace=True)
+
+# ------------------------------------------------------------------
+# 5) Merge the datasets on ["Sheet", "Date"]
+# ------------------------------------------------------------------
+df_merged = pd.merge(
+    df_chl_long,
+    df_params[["Sheet", "Date", "Pmax", "Alpha", "R", "Ik", "Beta"]],
+    on=["Sheet", "Date"],
+    how="inner"
+)
+
+print("\nFirst few rows of the merged DataFrame:")
+print(df_merged.head())
+print("\nShape (rows x columns):", df_merged.shape)
+
+# ------------------------------------------------------------------
+# 6) Calculate Spearman correlation between Chlorophyll and parameters
+# ------------------------------------------------------------------
+params = ["Pmax", "Alpha", "R", "Ik", "Beta"]
+
+for param in params:
+    print(f"\n====== Spearman Correlation between {param} and Chlorophyll ======")
+    
+    # a) Overall correlation
+    spearman_corr_overall = df_merged["Chlorophyll"].corr(df_merged[param], method="spearman")
+    print(f"Overall Spearman correlation: {spearman_corr_overall:.3f}")
+    
+    # b) Correlation for each date separately
+    grouped_by_date = df_merged.groupby("Date")
+    for current_date, group_data in grouped_by_date:
+        spearman_corr_date = group_data["Chlorophyll"].corr(group_data[param], method="spearman")
+        print("\n====================================================")
+        print(f"Date: {current_date.date()}")
+        print(f"Spearman correlation on this date: {spearman_corr_date:.3f}")
+
+
+
+
