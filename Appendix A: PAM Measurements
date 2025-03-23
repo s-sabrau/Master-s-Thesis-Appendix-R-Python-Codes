@@ -1,0 +1,597 @@
+"""
+Appendix Script – PAM Morning Data Analysis
+===========================================
+
+This script analyzes the influence of temperature and time on the effective 
+quantum yield (Y) of *Fucus* sp. using photosynthetic measurements taken 
+in the morning (dark-adapted state).
+
+The workflow includes:
+- Data import and transformation
+- Exploratory time series visualization
+- Linear Mixed-Effects Model (LMM) with interaction terms
+- Optional Generalized Additive Model (GAM) as a nonlinear alternative
+
+Author: [Your Name]
+Date: [Date]
+"""
+
+# =============================================================================
+# 1. Import required libraries
+# =============================================================================
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+import matplotlib.pyplot as plt
+import seaborn as sns
+from pygam import LinearGAM, s
+
+# =============================================================================
+# 2. Load data
+# =============================================================================
+file_path = "Pam_Data.xlsx"
+
+# Read PAM (morning) and temperature data
+df_pam = pd.read_excel(file_path, sheet_name="PAM morning")
+df_temp = pd.read_excel(file_path, sheet_name="Temperature")
+
+# =============================================================================
+# 3. Reshape data to long format
+# =============================================================================
+df_pam_long = df_pam.melt(id_vars=["TankNumber", "HeaderTank", "Treatment"],
+                          var_name="Date", value_name="Y")
+df_pam_long["Date"] = pd.to_datetime(df_pam_long["Date"])
+
+df_temp_long = df_temp.melt(id_vars=["TankNumber", "HeaderTank", "Treatment"],
+                            var_name="Date", value_name="Temperature")
+df_temp_long["Date"] = pd.to_datetime(df_temp_long["Date"])
+
+# =============================================================================
+# 4. Merge datasets
+# =============================================================================
+df_merged = pd.merge(df_pam_long, df_temp_long,
+                     on=["TankNumber", "Date", "Treatment"], how="left")
+
+# =============================================================================
+# 5. Clean and standardize data
+# =============================================================================
+df_merged.dropna(subset=["Y", "Temperature"], inplace=True)
+df_merged["Treatment"] = df_merged["Treatment"].astype("category")
+
+# Standardize temperature and date
+df_merged["Temperature_scaled"] = (
+    df_merged["Temperature"] - df_merged["Temperature"].mean()
+) / df_merged["Temperature"].std()
+
+df_merged["Date_scaled"] = (
+    df_merged["Date"] - df_merged["Date"].min()
+) / (df_merged["Date"].max() - df_merged["Date"].min())
+
+# =============================================================================
+# 6. Exploratory Data Analysis (EDA)
+# =============================================================================
+plt.figure(figsize=(12, 6))
+sns.lineplot(data=df_merged, x="Date", y="Y", hue="Treatment",
+             estimator="mean", errorbar='sd')
+plt.xlabel("Date")
+plt.ylabel("Effective Quantum Yield (Y)")
+plt.title("Time Series of Morning PAM Values by Treatment")
+plt.xticks(rotation=45)
+plt.legend(title="Treatment", bbox_to_anchor=(1.05, 1), loc='upper left')
+plt.tight_layout()
+plt.show()
+
+# =============================================================================
+# 7. Linear Mixed-Effects Model (LMM)
+# =============================================================================
+formula = "Y ~ Temperature_scaled * Treatment * Date_scaled"
+model = smf.mixedlm(formula, df_merged, groups=df_merged["TankNumber"], re_formula="1")
+
+try:
+    lmm_result = model.fit(method='bfgs')
+except Exception as e:
+    print("BFGS optimization failed, trying 'cg':", e)
+    lmm_result = model.fit(method='cg')
+
+print(lmm_result.summary())
+
+# Save LMM results
+results_file = "LMM_Results_Advanced.txt"
+with open(results_file, "w") as f:
+    f.write(lmm_result.summary().as_text())
+
+print("LMM results saved in:", results_file)
+
+# =============================================================================
+# 8. Optional: Generalized Additive Model (GAM)
+# =============================================================================
+# If no significant effects are found in the LMM, a GAM is used as a non-linear alternative.
+if all(lmm_result.pvalues > 0.05):
+    print("\nNo significant effects found in LMM. Running non-linear GAM...\n")
+    gam = LinearGAM(s(0) + s(1)).fit(df_merged[["Temperature_scaled", "Date_scaled"]],
+                                     df_merged["Y"])
+    print(gam.summary())
+    
+    with open("GAMM_Results.txt", "w") as f:
+        f.write(str(gam.summary()))
+
+    XX = np.linspace(df_merged["Temperature_scaled"].min(),
+                     df_merged["Temperature_scaled"].max(), 100)
+    plt.figure(figsize=(8, 5))
+    plt.plot(XX, gam.predict(np.column_stack([XX, np.full_like(XX, 0.5)])),
+             label="Non-linear Temperature Effect", color='red')
+    plt.xlabel("Scaled Temperature")
+    plt.ylabel("Predicted Y")
+    plt.title("GAM: Temperature vs. Quantum Yield (Morning)")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+# =============================================================================
+# End of script
+# =============================================================================
+
+"""
+Appendix Script – Photosynthesis Analysis (Noon Data)
+=====================================================
+
+This script analyzes the effect of temperature and time on photosynthetic performance (Y)
+based on midday (light-adapted) PAM measurements of *Fucus* sp.
+
+The workflow includes:
+- Data import and transformation
+- Exploratory visualization of temporal trends
+- Linear Mixed-Effects Modeling (LMM)
+- Generalized Additive Modeling (GAM)
+- Partial correlations by treatment
+- Trend analysis per treatment group
+
+
+# =============================================================================
+# 1. Import required libraries
+# =============================================================================
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+import matplotlib.pyplot as plt
+import seaborn as sns
+from pygam import LinearGAM, s
+from pingouin import partial_corr
+
+# =============================================================================
+# 2. Data Import & Transformation
+# =============================================================================
+file_path = "Pam_Data.xlsx"
+
+# Load midday PAM (photosynthesis) and temperature data
+df_pam = pd.read_excel(file_path, sheet_name="PAM noon")  
+df_temp = pd.read_excel(file_path, sheet_name="Temperature")  
+
+# Convert to long format
+df_pam_long = df_pam.melt(id_vars=["TankNumber", "HeaderTank", "Treatment"],
+                          var_name="Date", value_name="Y")
+df_temp_long = df_temp.melt(id_vars=["TankNumber", "HeaderTank", "Treatment"],
+                            var_name="Date", value_name="Temperature")
+
+# Ensure proper datetime format
+df_pam_long["Date"] = pd.to_datetime(df_pam_long["Date"])
+df_temp_long["Date"] = pd.to_datetime(df_temp_long["Date"])
+
+# Merge PAM and temperature data
+df_merged = df_pam_long.merge(df_temp_long, on=["TankNumber", "Date", "Treatment"], how="left")
+
+# Remove missing data
+df_merged.dropna(subset=["Y", "Temperature"], inplace=True)
+
+# Standardize variables
+df_merged["Temperature_scaled"] = (df_merged["Temperature"] - df_merged["Temperature"].mean()) / df_merged["Temperature"].std()
+df_merged["Date_scaled"] = (df_merged["Date"] - df_merged["Date"].min()) / (df_merged["Date"].max() - df_merged["Date"].min())
+
+# Convert treatment to categorical
+df_merged["Treatment"] = df_merged["Treatment"].astype("category")
+
+# =============================================================================
+# 3. Exploratory Data Analysis (EDA)
+# =============================================================================
+plt.figure(figsize=(12,6))
+sns.lineplot(data=df_merged, x="Date", y="Y", hue="Treatment", estimator="mean", errorbar='sd')
+plt.xlabel("Date")
+plt.ylabel("Effective Quantum Yield (Y)")
+plt.title("Photosynthetic Performance Over Time by Treatment")
+plt.xticks(rotation=45)
+plt.legend(title="Treatment", bbox_to_anchor=(1.05, 1), loc='upper left')
+plt.tight_layout()
+plt.show()
+
+# =============================================================================
+# 4. Linear Mixed-Effects Model (LMM)
+# =============================================================================
+print("\nRunning Linear Mixed Model (LMM)...")
+formula = "Y ~ Temperature_scaled * Treatment * Date_scaled"
+lmm_model = smf.mixedlm(formula, df_merged, groups=df_merged["TankNumber"], re_formula="1")
+
+# Try different optimization methods
+try:
+    lmm_result = lmm_model.fit(method='bfgs')
+except:
+    lmm_result = lmm_model.fit(method='cg')
+
+print(lmm_result.summary())
+
+# Save LMM results
+with open("LMM_Results.txt", "w") as f:
+    f.write(lmm_result.summary().as_text())
+
+print("LMM results saved in 'LMM_Results.txt'")
+
+##### GAM
+
+# =============================================================================
+# 5. Generalized Additive Model (GAM) - All Data
+# =============================================================================
+print("\nRunning Generalized Additive Model (GAM)...")
+gam = LinearGAM(s(0) + s(1)).fit(df_merged[["Temperature_scaled", "Date_scaled"]], df_merged["Y"])
+print(gam.summary())
+
+# Plot temperature effect
+XX = np.linspace(df_merged["Temperature_scaled"].min(), df_merged["Temperature_scaled"].max(), 100)
+median_date = df_merged["Date_scaled"].median()
+X_pred = np.column_stack([XX, np.full_like(XX, median_date)])
+
+plt.figure(figsize=(6,4))
+plt.plot(XX, gam.predict(X_pred), label="Non-linear Temperature Effect", color='red')
+plt.xlabel("Scaled Temperature")
+plt.ylabel("Predicted Y")
+plt.title("Non-linear Effect of Temperature on Quantum Yield")
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# Plot date effect
+XX_date = np.linspace(df_merged["Date_scaled"].min(), df_merged["Date_scaled"].max(), 100)
+median_temp = df_merged["Temperature_scaled"].median()
+X_pred_date = np.column_stack([np.full_like(XX_date, median_temp), XX_date])
+
+plt.figure(figsize=(6,4))
+plt.plot(XX_date, gam.predict(X_pred_date), label="Non-linear Time Effect", color='blue')
+plt.xlabel("Scaled Date")
+plt.ylabel("Predicted Y")
+plt.title("Non-linear Effect of Time on Quantum Yield")
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# =============================================================================
+# 6. GAM for Each Treatment Separately
+# =============================================================================
+print("\nRunning GAM for each Treatment...")
+for treatment in df_merged["Treatment"].unique():
+    df_subset = df_merged[df_merged["Treatment"] == treatment]
+    
+    gam = LinearGAM(s(0) + s(1)).fit(df_subset[["Temperature_scaled", "Date_scaled"]], df_subset["Y"])
+    
+    print(f"\nTreatment: {treatment}")
+    print(gam.summary())
+
+    XX = np.linspace(df_subset["Temperature_scaled"].min(), df_subset["Temperature_scaled"].max(), 100)
+    X_pred = np.column_stack([XX, np.full_like(XX, df_subset["Date_scaled"].median())])
+
+    plt.figure(figsize=(6, 4))
+    plt.plot(XX, gam.predict(X_pred), label=f"Effect in {treatment}", color='red')
+    plt.xlabel("Scaled Temperature")
+    plt.ylabel("Predicted Y")
+    plt.title(f"Non-linear Relationship in {treatment}")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+# =============================================================================
+# 7. Correlation and Partial Correlation
+# =============================================================================
+print("\nComputing Correlations...")
+correlation_matrix = df_merged[["Y", "Temperature_scaled", "Date_scaled"]].corr()
+print(correlation_matrix)
+
+# Partial correlation between Y and temperature, controlling for date
+for treatment in df_merged["Treatment"].unique():
+    df_subset = df_merged[df_merged["Treatment"] == treatment]
+    p_corr = partial_corr(data=df_subset, x="Temperature_scaled", y="Y", covar="Date_scaled", method="pearson")
+    
+    print(f"Partial correlation in {treatment}:")
+    print(p_corr, "\n")
+
+# =============================================================================
+# End of Script
+# =============================================================================
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def compare_pam_values(file_path):
+    """
+    Compare morning (dark-adapted) and noon (light-adapted) PAM values
+    across different treatments in a controlled experiment.
+
+    The function reshapes, merges, and analyzes PAM data from both time points,
+    calculates differences, and visualizes average patterns.
+
+    Parameters:
+    - file_path: str, path to the Excel file containing 'PAM morning' and 'PAM noon' sheets
+
+    Returns:
+    - df_merged: merged DataFrame with both PAM values
+    - mean_values: DataFrame with average PAM values and differences per treatment
+    """
+
+    # Load PAM data from Excel for morning and noon measurements
+    df_pam_morning = pd.read_excel(file_path, sheet_name="PAM morning")
+    df_pam_noon = pd.read_excel(file_path, sheet_name="PAM noon")
+    
+    # Ensure required columns are present
+    required_columns = ["TankNumber", "HeaderTank", "Treatment"]
+    for col in required_columns:
+        if col not in df_pam_morning.columns or col not in df_pam_noon.columns:
+            raise ValueError(f"Missing required column '{col}' in one of the sheets.")
+    
+    # Reshape both data sets to long format
+    df_pam_morning_long = df_pam_morning.melt(
+        id_vars=["TankNumber", "HeaderTank", "Treatment"], 
+        var_name="Date", 
+        value_name="morning PAM"
+    )
+    df_pam_morning_long["Date"] = pd.to_datetime(df_pam_morning_long["Date"])
+    
+    df_pam_noon_long = df_pam_noon.melt(
+        id_vars=["TankNumber", "HeaderTank", "Treatment"], 
+        var_name="Date", 
+        value_name="noon PAM"
+    )
+    df_pam_noon_long["Date"] = pd.to_datetime(df_pam_noon_long["Date"])
+    
+    # Merge morning and noon data by Tank, Date, and Treatment
+    df_merged = pd.merge(
+        df_pam_morning_long, 
+        df_pam_noon_long, 
+        on=["TankNumber", "HeaderTank", "Treatment", "Date"], 
+        how="inner"
+    )
+    
+    # Determine whether morning or noon PAM was higher
+    df_merged["Higher PAM"] = df_merged.apply(
+        lambda row: "morning" if row["morning PAM"] > row["noon PAM"] 
+        else ("noon" if row["morning PAM"] < row["noon PAM"] else "equal"), 
+        axis=1
+    )
+    
+    # Count occurrences per treatment group
+    result = df_merged.groupby(["Treatment", "Higher PAM"]).size().unstack(fill_value=0)
+    
+    # Compute mean PAM values per treatment and their difference
+    mean_values = df_merged.groupby("Treatment")[["morning PAM", "noon PAM"]].mean()
+    mean_values["Difference"] = mean_values["morning PAM"] - mean_values["noon PAM"]
+    
+    # Output results to console
+    print("\nFirst few rows of the merged data:")
+    print(df_merged.head())
+    
+    print("\nFrequency of which value (morning vs noon) was higher per treatment:")
+    print(result)
+    
+    print("\nAverage PAM values per treatment:")
+    print(mean_values)
+    
+    # Save merged results to file
+    output_file = "pam_comparison_results.xlsx"
+    df_merged.to_excel(output_file, index=False)
+    print(f"\nResults saved to: {output_file}")
+
+    return df_merged, mean_values
+
+# Example usage
+file_path = "Pam_Data.xlsx"
+df_merged, mean_values = compare_pam_values(file_path)
+
+# Bar plot to visualize mean PAM values by treatment
+mean_values[["morning PAM", "noon PAM"]].plot(kind="bar", figsize=(8, 5))
+plt.title("Average Morning vs Noon PAM Values per Treatment")
+plt.ylabel("PAM Value")
+plt.xlabel("Treatment")
+plt.xticks(rotation=45)
+plt.legend(title="Time of Day")
+plt.tight_layout()
+plt.show()
+
+"""
+Script: compare_pam_timepoints.py
+
+Description:
+This script performs a statistical comparison between morning (dark-adapted)
+and noon (light-adapted) PAM measurements of effective quantum yield across
+different treatments in an experimental setup. For each treatment group,
+paired t-tests and Wilcoxon signed-rank tests are conducted to determine
+whether there are significant diurnal differences in photosynthetic performance.
+
+Author: [Your Name]
+Date: [YYYY-MM-DD]
+"""
+
+import pandas as pd
+from scipy.stats import ttest_rel, wilcoxon
+
+# ------------------------------------------------------------------------------
+# 1. Data Import
+# ------------------------------------------------------------------------------
+file_path = "Pam_Data.xlsx"
+
+# Load PAM data from Excel for morning and noon
+df_pam_morning = pd.read_excel(file_path, sheet_name="PAM morning")
+df_pam_noon = pd.read_excel(file_path, sheet_name="PAM noon")
+
+# Ensure required columns exist
+required_columns = ["TankNumber", "HeaderTank", "Treatment"]
+for col in required_columns:
+    if col not in df_pam_morning.columns or col not in df_pam_noon.columns:
+        raise ValueError(f"Missing required column '{col}' in one of the Excel sheets.")
+
+# ------------------------------------------------------------------------------
+# 2. Reshape Data to Long Format
+# ------------------------------------------------------------------------------
+df_pam_morning_long = df_pam_morning.melt(
+    id_vars=["TankNumber", "HeaderTank", "Treatment"],
+    var_name="Date", 
+    value_name="morning PAM"
+)
+df_pam_morning_long["Date"] = pd.to_datetime(df_pam_morning_long["Date"])
+
+df_pam_noon_long = df_pam_noon.melt(
+    id_vars=["TankNumber", "HeaderTank", "Treatment"],
+    var_name="Date", 
+    value_name="noon PAM"
+)
+df_pam_noon_long["Date"] = pd.to_datetime(df_pam_noon_long["Date"])
+
+# ------------------------------------------------------------------------------
+# 3. Merge Morning and Noon Data
+# ------------------------------------------------------------------------------
+df_merged = pd.merge(
+    df_pam_morning_long,
+    df_pam_noon_long,
+    on=["TankNumber", "HeaderTank", "Treatment", "Date"],
+    how="inner"
+)
+
+# ------------------------------------------------------------------------------
+# 4. Create Column: 'Higher PAM'
+# ------------------------------------------------------------------------------
+df_merged.columns = df_merged.columns.str.strip()  # Clean up column names
+
+df_merged["Higher PAM"] = df_merged.apply(
+    lambda row: "morning" if row["morning PAM"] > row["noon PAM"]
+    else ("noon" if row["morning PAM"] < row["noon PAM"] else "equal"),
+    axis=1
+)
+
+# ------------------------------------------------------------------------------
+# 5. Paired Statistical Tests per Treatment
+# ------------------------------------------------------------------------------
+results = {}
+
+for treatment, group in df_merged.groupby("Treatment"):
+    morning = group["morning PAM"]
+    noon = group["noon PAM"]
+    
+    # Paired t-test (parametric)
+    t_stat, p_val = ttest_rel(morning, noon)
+    
+    # Wilcoxon signed-rank test (non-parametric)
+    try:
+        w_stat, p_val_w = wilcoxon(morning, noon)
+    except Exception:
+        w_stat, p_val_w = None, None
+    
+    results[treatment] = {
+        "n": len(group),
+        "t_stat": t_stat,
+        "p_val_t": p_val,
+        "w_stat": w_stat,
+        "p_val_w": p_val_w
+    }
+
+# ------------------------------------------------------------------------------
+# 6. Output Results to Console
+# ------------------------------------------------------------------------------
+for treatment, res in results.items():
+    print(f"Treatment: {treatment}")
+    print(f"  n = {res['n']}")
+    print(f"  Paired t-Test: t = {res['t_stat']:.3f}, p = {res['p_val_t']:.3f}")
+    if res["w_stat"] is not None:
+        print(f"  Wilcoxon-Test: statistic = {res['w_stat']:.3f}, p = {res['p_val_w']:.3f}")
+    print()
+
+# ------------------------------------------------------------------------------
+# 7. Save Merged Dataset
+# ------------------------------------------------------------------------------
+output_file = "pam_comparison_results.xlsx"
+df_merged.to_excel(output_file, index=False)
+print(f"Results saved to: {output_file}")
+
+"""
+Analysis: Comparison of Effective Quantum Yield (Y)
+Between Treatments With and Without Brownification
+
+This script performs statistical tests to compare the mean effective quantum yield (Y)
+between treatments that include brownification and those that do not. It also generates
+a boxplot to visualize the distribution of Y values under both conditions.
+
+Tests performed:
+- Welch's t-test (for unequal variances)
+- Mann-Whitney U-test (non-parametric alternative)
+
+Visualization:
+A boxplot is generated using seaborn with the 'viridis' color palette and Times New Roman
+font for consistency with publication standards.
+"""
+
+import pandas as pd
+from scipy.stats import ttest_ind, mannwhitneyu
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Calculate mean PAM from morning and noon values
+df_merged["mean_PAM"] = df_merged[["morning PAM", "noon PAM"]].mean(axis=1)
+
+# Create a new boolean column for Brownification presence
+df_merged["Brownification"] = df_merged["Treatment"].apply(lambda x: "Brownification" in str(x))
+
+# Split data into two groups: with and without brownification
+group_brown = df_merged[df_merged["Brownification"] == True]["mean_PAM"]
+group_no_brown = df_merged[df_merged["Brownification"] == False]["mean_PAM"]
+
+# Perform Welch's t-test (does not assume equal variances)
+t_stat, p_val_t = ttest_ind(group_brown, group_no_brown, equal_var=False)
+
+# Perform Mann-Whitney U test (non-parametric)
+u_stat, p_val_u = mannwhitneyu(group_brown, group_no_brown, alternative='two-sided')
+
+# Print results
+print(" Comparison: Brownification vs. No Brownification")
+print(f"  Mean PAM (with Brownification): {group_brown.mean():.2f}")
+print(f"  Mean PAM (without Brownification): {group_no_brown.mean():.2f}")
+print(f"  T-Test: t = {t_stat:.3f}, p = {p_val_t:.4f}")
+print(f"  Mann-Whitney U-Test: U = {u_stat:.3f}, p = {p_val_u:.4f}")
+
+# ============================================
+# Boxplot Visualization
+# ============================================
+
+# Set global font to Times New Roman
+plt.rcParams["font.family"] = "Times New Roman"
+
+# Create the figure
+plt.figure(figsize=(8, 6))
+
+# Draw boxplot with Viridis palette
+sns.boxplot(
+    x="Brownification",
+    y="mean_PAM",
+    data=df_merged,
+    palette="viridis"
+)
+
+# Customize x-axis labels
+plt.xticks([0, 1], ["Without Brownification", "With Brownification"])
+
+# Add labels and title
+plt.xlabel("Brownification")
+plt.ylabel("Mean Effective Quantum Yield (Y)")
+plt.title("Comparison of Photosynthetic Performance by Brownification")
+
+# Adjust layout and show plot
+plt.tight_layout()
+plt.show()
+
+
+
+
