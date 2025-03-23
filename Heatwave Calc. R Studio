@@ -1,0 +1,36 @@
+# Install necessary packages for heatwave analysis and data handling
+install.packages("heatwaveR")  # For heatwave detection
+install.packages("dplyr")       # For data manipulation
+install.packages("readxl")      # For reading Excel files
+
+# Load the installed libraries into the R session
+library(heatwaveR)
+library(dplyr)
+library(readxl)
+
+# Read the Excel file "Temp1.xlsx" into a dataframe
+df <- read_excel("Temp1.xlsx")
+colnames(df) <- c("t", "temp")  # Rename columns to 't' for time and 'temp' for temperature
+
+# Ensure 't' is of Date type and 'temp' is numeric
+df$t <- as.Date(df$t)           # Convert 't' column to Date format
+df$temp <- as.numeric(df$temp)   # Convert 'temp' column to numeric
+# Detect the events in a time series
+ts <- ts2clm(df, climatologyPeriod = c("2000-01-01", "2021-12-31"))  # Convert to climatological format
+mhw <- detect_event(ts)         # Identify marine heatwave events
+#seasClim
+#the dafault for this argument assumes that the seasonal climatology column is called seas as this matches the output of ts2clm. 
+
+# Calculate the 90th percentile of the seasonal data
+quantile_90 <- quantile(climatology$seas, probs = 0.9)  # Get the 90th quantile
+print(quantile_90)            # Print the 90th quantile value
+
+# Print average temperature for summer heatwaves from 01.04 to 31.09. 2000 to 2001 (next step)
+# This part is commented out, indicating a planned analysis.
+# print(intensity_mean_df)
+
+#average Days for Summer Heatwaves from 01.04. to 31.09. 
+#15,46°C
+
+#average Days per Heatwave
+#15
