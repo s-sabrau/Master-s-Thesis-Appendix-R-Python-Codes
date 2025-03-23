@@ -1,0 +1,124 @@
+##############################################
+# Thesis: PAM Analysis with Temperature Data (Morning Measurements)
+##############################################
+
+# Install required packages if not already installed:
+# install.packages("tidyverse")   # Data manipulation and visualization
+# install.packages("ggpubr")      # For statistical tests and visualizations
+# install.packages("multcomp")    # For post-hoc tests
+# install.packages("dunn.test")   # For Dunn's test
+# install.packages("car")         # For Levene's test
+# install.packages("nlme")        # For mixed-effects models
+
+# Load necessary libraries
+library(nlme)
+library(emmeans)
+library(ggplot2)
+library(readxl)
+library(dplyr)
+library(extrafont)
+
+# Load fonts
+loadfonts(device = "win")  # Necessary for Windows users
+
+# Load data from the Excel file (PAM morning and Temperature sheets)
+data_pam_morning <- read_xlsx("Pam_Data.xlsx", sheet = "PAM morning", col_names = FALSE)
+data_temperature <- read_xlsx("Pam_Data.xlsx", sheet = "Temperature", col_names = FALSE)
+
+# Extract date from the first row and reformat it as Date
+dates <- as.Date(as.numeric(data_pam_morning[1, -c(1:3)]), origin = "1899-12-30")
+
+# Rename columns and remove the first row used for dates
+colnames(data_pam_morning) <- c("Tank_Number", "HeaderTank", "Treatment", as.character(dates))
+data_pam_morning <- data_pam_morning[-1, ]
+
+colnames(data_temperature) <- c("Tank_Number", "HeaderTank", "Treatment", as.character(dates))
+data_temperature <- data_temperature[-1, ]
+
+# Convert Treatment and Tank_Number to factors
+data_pam_morning$Treatment <- factor(data_pam_morning$Treatment)
+data_pam_morning$Tank_Number <- factor(data_pam_morning$Tank_Number)
+
+data_temperature$Treatment <- factor(data_temperature$Treatment)
+data_temperature$Tank_Number <- factor(data_temperature$Tank_Number)
+
+# Reshape data from wide to long format
+data_pam_long <- data_pam_morning %>%
+  pivot_longer(
+    cols = -c(Tank_Number, HeaderTank, Treatment),
+    names_to = "Date",
+    values_to = "Yield"
+  )
+data_pam_long$Date <- as.Date(data_pam_long$Date)
+
+# Reshape temperature data to match format
+data_temp_long <- data_temperature %>%
+  pivot_longer(
+    cols = -c(Tank_Number, HeaderTank, Treatment),
+    names_to = "Date",
+    values_to = "Temperature"
+  )
+data_temp_long$Date <- as.Date(data_temp_long$Date)
+
+# Merge PAM morning and Temperature datasets based on Date and Treatment
+merged_data <- left_join(data_pam_long, data_temp_long, by = c("Date", "Treatment", "Tank_Number", "HeaderTank"))
+
+# Convert Yield values from scaled format (divide by 1000)
+merged_data$Yield <- as.numeric(merged_data$Yield) / 1000
+
+# Check for duplicate entries
+if(anyDuplicated(merged_data) > 0) {
+  message("Duplicates found in data.")
+} else {
+  message("No duplicates found.")
+}
+
+# Report missing values in the dataset
+cat("Total missing values:", sum(is.na(merged_data)), "\n")
+print(colSums(is.na(merged_data)))
+
+# Remove rows with missing values in 'Yield' or 'Temperature'
+merged_data <- merged_data[!is.na(merged_data$Yield) & !is.na(merged_data$Temperature), ]
+
+##############################################
+# Removing Extreme Outliers and Creating Publication-Quality Plot
+##############################################
+
+# Calculate the Z-score for Yield
+merged_data$z_score <- scale(merged_data$Yield)
+
+# Remove extreme outliers: keep rows with absolute Z-score <= 3
+data_no_outliers <- subset(merged_data, abs(z_score) <= 3)
+
+# Define the three time intervals
+data_no_outliers$Time_Period <- cut(
+  data_no_outliers$Date,
+  breaks = as.Date(c("2024-10-07", "2024-11-01", "2024-11-16", "2024-12-10")),
+  labels = c("07.10 - 01.11", "01.11 - 16.11", "16.11 - 10.12"),
+  include.lowest = TRUE
+)
+
+# Create a ggplot2 plot with segmented trendlines
+plot_trend <- ggplot(data_no_outliers, aes(x = Date, y = Yield, color = Temperature)) +
+  geom_line(aes(group = Treatment), size = 1) +  # Plot lines grouped by Treatment
+  geom_point(aes(color = Temperature), size = 3, shape = 21, fill = "white") +  # Points with white fill
+  scale_color_gradientn(
+    colors = c("blue", "green", "yellow", "red"),
+    values = scales::rescale(c(8, 14, 15, 18))
+  ) +
+  labs(title = "Effective quantum yield of PSII (after dark adaptation)",
+       x = "Date", 
+       y = "Effective quantum yield of PSII (ΔF/Fm')",
+       color = "Temperature (°C)") +
+  geom_smooth(method = "lm", aes(group = Time_Period), color = "darkgrey", size = 1, linetype = "solid") +
+  theme_classic(base_size = 14) +
+  theme(
+    text = element_text(family = "Times New Roman"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "top",
+    plot.title = element_text(hjust = 0.5, size = 18, face = "bold")
+  ) +
+  facet_wrap(~ Treatment, scales = "free_y")
+
+# Display the publication-quality plot
+print(plot_trend)
