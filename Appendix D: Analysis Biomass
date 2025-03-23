@@ -1,0 +1,214 @@
+
+Appendix D: Analysis Code Biomass in Fucus Experiment
+
+This script performs the following tasks:
+1. Reads an Excel file ("Mass_of_Fucus.xlsx")
+2. Computes the weight gain (final weight minus initial weight) for each sample.
+3. Groups the data by treatment and performs a paired t-test comparing the initial and final weights.
+4. Calculates the average weight gain, standard deviation, and sample size for each treatment group.
+5. Identifies the treatments with the highest and lowest average weight gain.
+6. Generates a bar chart displaying the average weight gain per treatment.
+"""
+
+import pandas as pd
+import numpy as np
+from scipy import stats
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+
+# Set global style parameters for publication quality figures
+mpl.rcParams['font.family'] = 'Times New Roman'
+mpl.rcParams['font.size'] = 12
+
+# Read the Excel file (ensure that "Mass_of_Fucus.xlsx" is in the same directory)
+df = pd.read_excel("Mass_of_Fucus.xlsx")
+
+# Print the column names to verify the data structure
+print("Columns in the DataFrame:", df.columns.tolist())
+
+# Define the column names for the weight measurements
+# Note: The 'Weight before ' column name includes a trailing space.
+weight_before_col = 'Weight before '
+final_weight_col = 'Final weigh'
+
+# Calculate weight gain: (Final weight) - (Weight before)
+df['Weight_gain'] = df[final_weight_col] - df[weight_before_col]
+
+# Group the data by the 'Treatment' column
+grouped = df.groupby('Treatment')
+
+# Initialize a dictionary to store the results for each treatment group
+results = {}
+
+for treatment, group in grouped:
+    # Perform a paired t-test comparing final weight and weight before for the group
+    t_stat, p_val = stats.ttest_rel(group[final_weight_col], group[weight_before_col])
+    
+    # Calculate the average weight gain, standard deviation, and sample size
+    avg_gain = group['Weight_gain'].mean()
+    std_gain = group['Weight_gain'].std()
+    n = group.shape[0]
+    
+    results[treatment] = {
+        "avg_gain": avg_gain,
+        "std_gain": std_gain,
+        "n": n,
+        "t_stat": t_stat,
+        "p_value": p_val
+    }
+
+# Display the results of the paired t-tests and weight gain calculations by treatment
+print("\nResults of paired t-tests and weight gain calculations by treatment:")
+for treatment, res in results.items():
+    print(f"\nTreatment: {treatment}")
+    print(f"  Average weight gain: {res['avg_gain']:.2f}")
+    print(f"  Standard deviation: {res['std_gain']:.2f} (n = {res['n']})")
+    print(f"  Paired t-Test: t = {res['t_stat']:.2f}, p = {res['p_value']:.4f}")
+
+# Identify the treatment groups with the highest and lowest average weight gain
+avg_gains = {t: res["avg_gain"] for t, res in results.items()}
+max_treatment = max(avg_gains, key=avg_gains.get)
+min_treatment = min(avg_gains, key=avg_gains.get)
+
+print("\nSummary of weight gains:")
+print(f"  Highest weight gain in Treatment: '{max_treatment}' with an average gain of {avg_gains[max_treatment]:.2f}")
+print(f"  Lowest weight gain in Treatment: '{min_treatment}' with an average gain of {avg_gains[min_treatment]:.2f}")
+
+# Create a  bar chart for the average weight gain per treatment
+plt.figure(figsize=(10, 6))
+treatments = list(avg_gains.keys())
+gain_values = list(avg_gains.values())
+std_errors = [results[t]["std_gain"] for t in treatments]
+
+# Use the Viridis colormap for the bars
+colors = plt.cm.viridis(np.linspace(0, 1, len(treatments)))
+
+bars = plt.bar(treatments, gain_values, yerr=std_errors, capsize=5, color=colors, edgecolor='black')
+
+plt.xlabel("", fontsize=14)
+plt.ylabel("Average Weight Gain (g)", fontsize=14)
+plt.title("Weight Gain per Treatment", fontsize=16)
+plt.xticks(rotation=45, ha='right')
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+# Remove the top and right spines for a cleaner look
+ax = plt.gca()
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+
+plt.tight_layout()
+
+# Save the figure as a high-resolution PDF (optional)
+plt.savefig("weight_gain_per_treatment.pdf", dpi=300)
+
+plt.show()
+```
+"""
+:
+1. Sets the font style and size.
+2. Loads the data from an Excel file ("Mass_of_Fucus.xlsx").
+3. Calculates the weight gain based on the initial and final weights.
+4. Generates a boxplot showing the biomass increase for each treatment.
+"""
+
+import pandas as pd
+import numpy as np
+from scipy import stats
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+import matplotlib.patches as mpatches
+
+# ====================================================
+# 1) Set font style and size
+# ====================================================
+mpl.rcParams['font.family'] = 'Times New Roman'
+mpl.rcParams['font.size'] = 12
+
+# ====================================================
+# 2) Load data
+# ====================================================
+df = pd.read_excel("Mass_of_Fucus.xlsx")
+print("Columns in the DataFrame:", df.columns.tolist())
+
+# Define column names for weight measurements
+weight_before_col = 'Weight before '  # Note the trailing space
+final_weight_col = 'Final weigh'
+
+# Calculate weight gain: (Final weight) - (Weight before)
+df['Weight_gain'] = df[final_weight_col] - df[weight_before_col]
+
+# ====================================================
+# 3) Boxplot: Weight Gain per Treatment
+# ====================================================
+# Sort treatments and prepare data for plotting
+treatments = sorted(df['Treatment'].unique())
+data_to_plot = [df[df['Treatment'] == t]['Weight_gain'].dropna().values 
+                for t in treatments]
+
+plt.figure(figsize=(12, 6))  # Use a wider format for clarity
+
+# Create the boxplot
+bp = plt.boxplot(
+    data_to_plot,
+    notch=False,
+    vert=True,
+    patch_artist=True,
+    showfliers=True
+)
+
+# Use the Viridis colormap for color mapping
+cmap = plt.cm.get_cmap("viridis", len(treatments))
+
+# Color each box
+for i, box in enumerate(bp['boxes']):
+    box.set_facecolor(cmap(i))
+    box.set_edgecolor('black')
+    box.set_linewidth(1.5)
+
+# Customize whiskers, caps, medians, and outlier markers
+for whisker in bp['whiskers']:
+    whisker.set_color('black')
+    whisker.set_linewidth(1.2)
+
+for cap in bp['caps']:
+    cap.set_color('black')
+    cap.set_linewidth(1.2)
+
+for median in bp['medians']:
+    median.set_color('black')
+    median.set_linewidth(2)
+
+for flier in bp['fliers']:
+    flier.set_marker('o')
+    flier.set_markerfacecolor('black')
+    flier.set_markeredgecolor('black')
+    flier.set_markersize(4)
+
+# Set x-axis labels using the treatment indices
+x_positions = np.arange(1, len(treatments) + 1)
+plt.xticks(ticks=x_positions, labels=x_positions)
+
+plt.xlabel("Index of Treatment", fontsize=12)
+plt.ylabel("Biomass Increase (in g)", fontsize=12)
+plt.title("Biomass Increase of Fucus sp.", fontsize=14)
+
+# Build a legend with treatment indices and names
+patches = []
+for i, treatment in enumerate(treatments):
+    color_patch = mpatches.Patch(
+        color=cmap(i),
+        label=f"{i+1} — {treatment}"
+    )
+    patches.append(color_patch)
+
+plt.legend(
+    handles=patches, 
+    title="Treatments", 
+    bbox_to_anchor=(1.2, 1),  # Position the legend to the right
+    loc='upper left'
+)
+
+# Adjust the subplot to provide room for the legend on the right
+plt.subplots_adjust(right=0.8)
+
+plt.show()
